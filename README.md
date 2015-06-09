@@ -12,6 +12,8 @@ Will produce verikdemo at ./pjsip-apps/bin/samples/x86_64-unknown-linux-gnu/veri
 
 
 [Todo]
+
+
 1) Can send with more than 1 user simoutaniously. 
 2) Integrate with Venus module 
 3) Develop an app on Windows to control the device
