@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<deviceRegister>
+  <device>
+    <deviceId/>
+    <uniqueId>device1</uniqueId>
+    <modelCode>Sensor</modelCode>
+    <home>
+      <description>Test Home</description>
+      <networkID>networkID1</networkID>
+    </home>
+    <firmwareVersion>firmware.01.pvt</firmwareVersion>
+  </device>
+  <reRegister>0</reRegister>
+  <smartDevice>
+    <description>smart phone</description>
+    <uniqueId>unq_2305130636</uniqueId>
+  </smartDevice>
+</deviceRegister>
