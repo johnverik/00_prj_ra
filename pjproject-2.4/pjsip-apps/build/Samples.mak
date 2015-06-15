@@ -47,7 +47,8 @@ SAMPLES := auddemo \
 	   tonegen \
 	   vid_codec_test \
 	   vid_streamutil \
-	   verikdemo 
+	   verikdemo  \
+	   verikdemo1 
 	 
 
 PJSUA2_SAMPLES := pjsua2_demo

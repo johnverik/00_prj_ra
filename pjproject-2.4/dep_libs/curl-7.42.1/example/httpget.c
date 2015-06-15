@@ -18,7 +18,7 @@
  * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
  * KIND, either express or implied.
  *
- ***************************************************************************/ 
+ ***************************************************************************/
 #include <stdio.h>
 #include <curl/curl.h>
 
@@ -55,11 +55,11 @@ size_t write_data(void *ptr, size_t size, size_t nmemb, struct url_data *data) {
     return size * nmemb;
 }
 
- 
+
 int main(void)
 {
-  CURL *curl;
-  CURLcode res;
+    CURL *curl;
+    CURLcode res;
 
     struct url_data data;
     data.size = 0;
@@ -70,29 +70,29 @@ int main(void)
     }
 
     data.data[0] = '\0';
- 
-  curl = curl_easy_init();
-  if(curl) {
-    curl_easy_setopt(curl, CURLOPT_URL, "http://115.77.49.188:5000/device/getDevice/device2");
-    /* example.com is redirected, so we tell libcurl to follow redirection */ 
-    //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, "http://115.77.49.188:5000/device/getDevice/device2");
+        /* example.com is redirected, so we tell libcurl to follow redirection */
+        //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
- 
-    /* Perform the request, res will get the return code */ 
-    res = curl_easy_perform(curl);
-    /* Check for errors */ 
-    if(res != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
- 
-    /* always cleanup */ 
-    curl_easy_cleanup(curl);
-	
-	printf("[Received data: %s \n", data.data);
-  }
 
-  return 0;
+        /* Perform the request, res will get the return code */
+        res = curl_easy_perform(curl);
+        /* Check for errors */
+        if(res != CURLE_OK)
+            fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                    curl_easy_strerror(res));
+
+        /* always cleanup */
+        curl_easy_cleanup(curl);
+
+        printf("[Received data: %s \n", data.data);
+    }
+
+    return 0;
 }
 
 

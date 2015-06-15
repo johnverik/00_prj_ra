@@ -29,52 +29,52 @@
 
 int main(int argc, char *argv[])
 {
-  CURL *curl;
-  CURLcode res;
+    CURL *curl;
+    CURLcode res;
 
-  /* In windows, this will init the winsock stuff */
-  curl_global_init(CURL_GLOBAL_ALL);
+    /* In windows, this will init the winsock stuff */
+    curl_global_init(CURL_GLOBAL_ALL);
 
-  /* get a curl handle */
-  curl = curl_easy_init();
-  if(curl) {
+    /* get a curl handle */
+    curl = curl_easy_init();
+    if(curl) {
 
-	char file_path[256];
-	char post_data[1024*1024];
-	memset(post_data, 0, 1024*1024);
-	char post_data_index = 0;
-	strcpy(file_path,  argv[1] );
-	int file = open(file_path, O_CREAT );
-	if (file == -1)
-		assert(0);
-	
-	char tmp_buff[256];	
-	printf("[Debug] %s \n", post_data);
-	int rc; 
-	while (rc = read(file, tmp_buff, 1) >  0)
-	{
-		strncpy(&post_data[strlen(post_data)], tmp_buff, rc);	
-	}
-	close(file);
-		
-	printf("[Debug] %s \n", post_data);
-    /* First set the URL that is about to receive our POST. This URL can
+        char file_path[256];
+        char post_data[1024*1024];
+        memset(post_data, 0, 1024*1024);
+        char post_data_index = 0;
+        strcpy(file_path,  argv[1] );
+        int file = open(file_path, O_CREAT );
+        if (file == -1)
+            assert(0);
+
+        char tmp_buff[256];
+        printf("[Debug] %s \n", post_data);
+        int rc;
+        while (rc = read(file, tmp_buff, 1) >  0)
+        {
+            strncpy(&post_data[strlen(post_data)], tmp_buff, rc);
+        }
+        close(file);
+
+        printf("[Debug] %s \n", post_data);
+        /* First set the URL that is about to receive our POST. This URL can
        just as well be a https:// URL if that is what should receive the
        data. */
-    curl_easy_setopt(curl, CURLOPT_URL, "http://115.77.49.188:5000/device/registerDevice");
-    /* Now specify the POST data */
-    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
+        curl_easy_setopt(curl, CURLOPT_URL, "http://115.77.49.188:5000/device/registerDevice");
+        /* Now specify the POST data */
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
 
-    /* Perform the request, res will get the return code */
-    res = curl_easy_perform(curl);
-    /* Check for errors */
-    if(res != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
+        /* Perform the request, res will get the return code */
+        res = curl_easy_perform(curl);
+        /* Check for errors */
+        if(res != CURLE_OK)
+            fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                    curl_easy_strerror(res));
 
-    /* always cleanup */
-    curl_easy_cleanup(curl);
-  }
-  curl_global_cleanup();
-  return 0;
+        /* always cleanup */
+        curl_easy_cleanup(curl);
+    }
+    curl_global_cleanup();
+    return 0;
 }
