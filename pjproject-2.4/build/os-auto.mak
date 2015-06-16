@@ -4,7 +4,7 @@ export OS_CFLAGS   := $(CC_DEF)PJ_AUTOCONF=1  -fPIC -DPJ_IS_BIG_ENDIAN=0 -DPJ_IS
 
 export OS_CXXFLAGS := $(CC_DEF)PJ_AUTOCONF=1  -fPIC 
 
-export OS_LDFLAGS  :=  -lssl -lcrypto -ldl -lz -luuid -lm -lrt -lpthread  -lasound  
+export OS_LDFLAGS  :=  -lssl -lcrypto -ldl -lz -luuid -lm -lrt -lpthread   
 
 export OS_SOURCES  := 
 

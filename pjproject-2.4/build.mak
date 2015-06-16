@@ -1,4 +1,4 @@
-export PJDIR := /home/huyle/works/01_prj_ra/05_dev/pjnath_1/pjproject-2.4
+export PJDIR := /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4
 include $(PJDIR)/version.mak
 export PJ_DIR := $(PJDIR)
 
@@ -263,7 +263,7 @@ export APP_LDLIBS := $(PJSUA_LIB_LDLIB) \
 	$(APP_THIRD_PARTY_LIBS)\
 	$(APP_THIRD_PARTY_EXT)\
 	$(PJLIB_LDLIB) \
-	-lssl -lcrypto -ldl -lz -luuid -lm -lrt -lpthread  -lasound  
+	-lssl -lcrypto -ldl -lz -luuid -lm -lrt -lpthread   
 export APP_LDXXLIBS := $(PJSUA2_LIB_LDLIB) \
 	-lstdc++ \
 	$(APP_LDLIBS)

@@ -36,10 +36,10 @@ output/pjmedia-x86_64-unknown-linux-gnu/echo_speex.o: ../src/pjmedia/echo_speex.
  ../../pjlib/include/pj/assert.h ../../pjlib/include/pj/compat/assert.h \
  /usr/include/assert.h ../../pjlib/include/pj/log.h \
  ../../pjlib/include/pj/pool.h ../../pjlib/include/pj/list.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/speex/include/speex/speex_echo.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/speex/include/speex/speex_types.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/build/speex/speex/speex_config_types.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/speex/include/speex/speex_preprocess.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/speex/include/speex/speex_echo.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/speex/include/speex/speex_types.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/build/speex/speex/speex_config_types.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/speex/include/speex/speex_preprocess.h \
  ../src/pjmedia/echo_internal.h
 output/pjmedia-x86_64-unknown-linux-gnu/alaw_ulaw.o: ../src/pjmedia/alaw_ulaw.c ../include/pjmedia/alaw_ulaw.h \
  ../include/pjmedia/types.h ../include/pjmedia/config.h \
@@ -2307,16 +2307,16 @@ output/pjmedia-x86_64-unknown-linux-gnu/transport_srtp.o: ../src/pjmedia/transpo
  ../../pjlib/include/pj/ctype.h ../../pjlib/include/pj/compat/ctype.h \
  /usr/include/ctype.h ../../pjlib/include/pj/lock.h \
  ../../pjlib/include/pj/log.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/include/srtp.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/crypto_kernel.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/rand_source.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/err.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/datatypes.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/integers.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/build/srtp/srtp_config.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/include/srtp.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/crypto_kernel.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/rand_source.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/err.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/datatypes.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/integers.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/build/srtp/srtp_config.h \
  /usr/lib/gcc/x86_64-linux-gnu/4.6/include/stdint.h /usr/include/stdint.h \
  /usr/include/x86_64-linux-gnu/bits/wchar.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/alloc.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/alloc.h \
  /usr/include/netinet/in.h /usr/include/x86_64-linux-gnu/sys/socket.h \
  /usr/include/x86_64-linux-gnu/sys/uio.h \
  /usr/include/x86_64-linux-gnu/bits/uio.h \
@@ -2327,18 +2327,18 @@ output/pjmedia-x86_64-unknown-linux-gnu/transport_srtp.o: ../src/pjmedia/transpo
  /usr/include/x86_64-linux-gnu/asm/sockios.h \
  /usr/include/asm-generic/sockios.h \
  /usr/include/x86_64-linux-gnu/bits/in.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/prng.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/aes.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/gf2_8.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/aes_icm.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/cipher.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/rdbx.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/auth.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/cryptoalg.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/stat.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/crypto_types.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/key.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/srtp/crypto/include/crypto.h
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/prng.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/aes.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/gf2_8.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/aes_icm.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/cipher.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/rdbx.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/auth.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/cryptoalg.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/stat.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/crypto_types.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/key.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/srtp/crypto/include/crypto.h
 output/pjmedia-x86_64-unknown-linux-gnu/transport_udp.o: ../src/pjmedia/transport_udp.c \
  ../include/pjmedia/transport_udp.h ../include/pjmedia/stream.h \
  ../include/pjmedia/codec.h ../include/pjmedia/port.h \

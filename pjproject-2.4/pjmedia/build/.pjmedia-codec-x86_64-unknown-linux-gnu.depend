@@ -471,10 +471,10 @@ output/pjmedia-codec-x86_64-unknown-linux-gnu/speex_codec.o: ../src/pjmedia-code
  ../../pjlib/include/pj/list.h ../../pjlib/include/pj/pool.h \
  ../include/pjmedia/errno.h ../include/pjmedia/endpoint.h \
  ../include/pjmedia/sdp.h ../include/pjmedia/transport.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/speex/include/speex/speex.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/speex/include/speex/speex_bits.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/speex/include/speex/speex_types.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/build/speex/speex/speex_config_types.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/speex/include/speex/speex.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/speex/include/speex/speex_bits.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/speex/include/speex/speex_types.h \
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/build/speex/speex/speex_config_types.h \
  ../../pjlib/include/pj/log.h
 output/pjmedia-codec-x86_64-unknown-linux-gnu/ilbc.o: ../src/pjmedia-codec/ilbc.c ../include/pjmedia-codec/ilbc.h \
  ../include/pjmedia-codec/types.h ../include/pjmedia-codec/config.h \

@@ -168,7 +168,7 @@ output/pjmedia-audiodev-x86_64-unknown-linux-gnu/errno.o: ../src/pjmedia-audiode
  /usr/include/x86_64-linux-gnu/sys/sysmacros.h \
  /usr/include/x86_64-linux-gnu/bits/pthreadtypes.h /usr/include/alloca.h \
  ../../pjlib/include/pj/unicode.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/portaudio/include/portaudio.h
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/portaudio/include/portaudio.h
 output/pjmedia-audiodev-x86_64-unknown-linux-gnu/legacy_dev.o: ../src/pjmedia-audiodev/legacy_dev.c \
  ../include/pjmedia-audiodev/audiodev_imp.h \
  ../include/pjmedia-audiodev/audiodev.h \
@@ -297,7 +297,7 @@ output/pjmedia-audiodev-x86_64-unknown-linux-gnu/pa_dev.o: ../src/pjmedia-audiod
  ../../pjlib/include/pj/assert.h ../../pjlib/include/pj/compat/assert.h \
  /usr/include/assert.h ../../pjlib/include/pj/log.h \
  ../../pjlib/include/pj/os.h \
- /home/huyle/works/workaround/pjnath/pjproject-2.4/third_party/portaudio/include/portaudio.h
+ /home/duyphan/RemoteAccess/00_prj_ra/pjproject-2.4/third_party/portaudio/include/portaudio.h
 output/pjmedia-audiodev-x86_64-unknown-linux-gnu/wmme_dev.o: ../src/pjmedia-audiodev/wmme_dev.c \
  ../include/pjmedia-audiodev/audiodev_imp.h \
  ../include/pjmedia-audiodev/audiodev.h \

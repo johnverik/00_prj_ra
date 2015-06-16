@@ -58,7 +58,7 @@ export LDFLAGS += $(SDL_LDFLAGS) $(FFMPEG_LDFLAGS) $(V4L2_LDFLAGS) \
 AC_PJMEDIA_SND=pa_unix
 
 # For Unix, specify if ALSA should be supported
-AC_PA_USE_ALSA=1
+AC_PA_USE_ALSA=0
 
 # Additional PortAudio CFLAGS are in  -DHAVE_SYS_SOUNDCARD_H -DHAVE_LINUX_SOUNDCARD_H -DPA_LITTLE_ENDIAN
 

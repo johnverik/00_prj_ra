@@ -11,6 +11,9 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 #include <unistd.h>
 
 #include <netdb.h>
@@ -26,6 +29,9 @@
  * so that it does't clutter the screen output.
  */
 #define KA_INTERVAL 300
+#define UDS_SOCK_DEFAULT "/tmp/zw_test.sock"
+#define SUCCESS 0
+#define FAILED -1
 
 
 char usrid[256];
@@ -75,6 +81,35 @@ static struct app_t
     } rem;
 
 } icedemo;
+
+int g_uds_fd;
+
+int connectUDS(char *sock_path){
+
+    int sock_fd, len;
+    struct sockaddr_un server;
+
+    if((sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
+        perror("socket");
+        return FAILED;
+    }
+
+    server.sun_family = AF_UNIX;
+    if(sock_path  == NULL){
+        printf("using default UDS socket path [%s]\n",UDS_SOCK_DEFAULT);
+        strcpy(server.sun_path, UDS_SOCK_DEFAULT);
+    }else{
+        printf("using UDS socket path [%s]\n");
+        strcpy(server.sun_path, sock_path);
+    }
+    len = strlen(server.sun_path) + sizeof(server.sun_family);
+
+    if(connect(sock_fd, (struct soc *)&server, len) == -1){
+        perror("connect");
+        return FAILED;
+    }
+    return sock_fd;
+}
 
 /* Utility to display error messages */
 static void icedemo_perror(const char *title, pj_status_t status)
@@ -282,6 +317,25 @@ static void cb_on_rx_data(pj_ice_strans *ice_st,
               (unsigned)size,
               (char*)pkt));
 
+    char *cmd;
+    cmd = calloc(128, sizeof(char));
+    memcpy(cmd, pkt, size);
+    cmd[size] = '\0';
+    printf("command buff----------------%s\n", cmd);
+    if(strcmp(cmd, "turnon") == 0){
+        if(send(g_uds_fd,"032",3,0) == -1){
+            printf("send command to zw handler failed\n");
+        }
+    }else if(strcmp(cmd, "turnoff") == 0){
+        if(send(g_uds_fd,"042",3,0) == -1){
+            printf("send command to zw handler failed\n");
+        }
+    }else{
+        if(send(g_uds_fd, cmd, strlen(cmd), 0) == -1){
+            perror("send");
+        }
+    }
+    free(cmd);
     hexDump(NULL, pkt, size);
 
 
@@ -1842,6 +1896,18 @@ int main(int argc, char *argv[])
     }
 
     //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
+
+    g_uds_fd = connectUDS(NULL);
+    if(g_uds_fd > 0){
+        printf("connected to zw uds listener successfully!\n");
+    }else{
+        printf("connected to zw uds listener failed\n program exit -1");
+        return 1;
+    }
+
+    if(send(g_uds_fd,"l", 1,0) == -1){
+        perror("send");
+    }
 
     status = icedemo_init();
     if (status != PJ_SUCCESS)
