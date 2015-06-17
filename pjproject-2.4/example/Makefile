@@ -1,4 +1,4 @@
-APP=verikdemo
+APP=iceController
 
 CFLAGS += -L../pjlib/lib 
 CFLAGS += -L../pjlib-util/lib 
@@ -14,8 +14,16 @@ CFLAGS += -I../pjlib/include/ -I../pjlib-util/include  -I../pjnath/include
 CFLAGS += -L./ -lcurl 
 CFLAGS += -Wl,-rpath=./ 
 
+#debug
+CFLAGS += -g
+
+SRCS =  verikdemo.c 
+SRCS +=  httpwrapper.c 
+SRCS +=  icecontroller.c 
+SRCS +=  getline.c 
+
 all: 
-	gcc -o $(APP) verikdemo.c httpwrapper.c $(CFLAGS)  
+	gcc -o $(APP) $(SRCS)  $(CFLAGS)  
 
 clean:
 	rm -f $(APP)

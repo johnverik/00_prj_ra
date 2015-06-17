@@ -1521,7 +1521,7 @@ static void icedemo_usage()
  * And here's the main()
  */
 
-
+#if 0
 
 
 int main(int argc, char *argv[])
@@ -1633,3 +1633,5 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+#endif 

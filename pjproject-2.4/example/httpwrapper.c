@@ -3,6 +3,8 @@
 #include <curl/curl.h>
 
 
+
+
 struct BufferData {
     size_t size;
     char* data;
@@ -14,7 +16,7 @@ static size_t read_callback(void *ptr, size_t size, size_t nmemb, void *userp)
 {
     struct BufferData *pooh = (struct BufferData *)userp;
 
-    printf("Debug size: %d, nmemb: %d \n", size, nmemb);
+//    printf("Debug size: %d, nmemb: %d \n", size, nmemb);
 
     if(size*nmemb < 1)
         return 0;
@@ -24,7 +26,7 @@ static size_t read_callback(void *ptr, size_t size, size_t nmemb, void *userp)
         read = size*nmemb;
     else
         read = pooh->size;
-    printf("Debug read: %d \n", read);
+  //  printf("Debug read: %d \n", read);
 
     if(read) {
 
@@ -35,10 +37,83 @@ static size_t read_callback(void *ptr, size_t size, size_t nmemb, void *userp)
         return read;                        /* we return 1 byte at a time! */
     }
 
-    printf("Debug read  aaaa: %s \n", (char *)ptr);
+ //   printf("Debug read  aaaa: %s \n", (char *)ptr);
 
     return 0;                          /* no more data left to deliver */
 }
+
+
+
+
+
+
+static size_t write_data(void *ptr, size_t size, size_t nmemb, struct BufferData *data)
+{
+    size_t index = data->size;
+    size_t n = (size * nmemb);
+    char* tmp;
+
+    data->size += (size * nmemb);
+
+    tmp = realloc(data->data, data->size + 1); /* +1 for '\0' */
+
+    if(tmp) {
+        data->data = tmp;
+    } else {
+        if(data->data) {
+            free(data->data);
+        }
+        fprintf(stderr, "Failed to allocate memory.\n");
+        return 0;
+    }
+
+    memcpy((data->data + index), ptr, n);
+    data->data[data->size] = '\0';
+
+    return size * nmemb;
+}
+
+
+int http_get_request(char *url, char **buff)
+{
+    CURL *curl;
+    CURLcode res;
+
+    struct BufferData data;
+    data.size = 0;
+    data.data = malloc(1024*1024); /* reasonable size initial buffer */
+    if(NULL == data.data) {
+        fprintf(stderr, "Failed to allocate memory.\n");
+        return NULL;
+    }
+
+    data.data[0] = '\0';
+
+    curl = curl_easy_init();
+    if(curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, url);
+        /* example.com is redirected, so we tell libcurl to follow redirection */
+        //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
+
+        /* Perform the request, res will get the return code */
+        res = curl_easy_perform(curl);
+        /* Check for errors */
+        if(res != CURLE_OK)
+            fprintf(stderr, "curl_easy_perform() failed: %s\n",
+                    curl_easy_strerror(res));
+
+        /* always cleanup */
+        curl_easy_cleanup(curl);
+
+        //printf("[Received data: %s \n", data.data);
+    }
+    *buff = data.data;
+
+    return 0;
+}
+
 
 int http_post_request(char *url, char *str)
 {
@@ -112,77 +187,6 @@ int http_post_request(char *url, char *str)
         curl_easy_cleanup(curl);
     }
     curl_global_cleanup();
-    return 0;
-}
-
-
-
-
-
-static size_t write_data(void *ptr, size_t size, size_t nmemb, struct BufferData *data)
-{
-    size_t index = data->size;
-    size_t n = (size * nmemb);
-    char* tmp;
-
-    data->size += (size * nmemb);
-
-    tmp = realloc(data->data, data->size + 1); /* +1 for '\0' */
-
-    if(tmp) {
-        data->data = tmp;
-    } else {
-        if(data->data) {
-            free(data->data);
-        }
-        fprintf(stderr, "Failed to allocate memory.\n");
-        return 0;
-    }
-
-    memcpy((data->data + index), ptr, n);
-    data->data[data->size] = '\0';
-
-    return size * nmemb;
-}
-
-
-int http_get_request(char *url, char **buff)
-{
-    CURL *curl;
-    CURLcode res;
-
-    struct BufferData data;
-    data.size = 0;
-    data.data = malloc(1024*1024); /* reasonable size initial buffer */
-    if(NULL == data.data) {
-        fprintf(stderr, "Failed to allocate memory.\n");
-        return NULL;
-    }
-
-    data.data[0] = '\0';
-
-    curl = curl_easy_init();
-    if(curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        /* example.com is redirected, so we tell libcurl to follow redirection */
-        //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
-
-        /* Perform the request, res will get the return code */
-        res = curl_easy_perform(curl);
-        /* Check for errors */
-        if(res != CURLE_OK)
-            fprintf(stderr, "curl_easy_perform() failed: %s\n",
-                    curl_easy_strerror(res));
-
-        /* always cleanup */
-        curl_easy_cleanup(curl);
-
-        printf("[Received data: %s \n", data.data);
-    }
-    *buff = data.data;
-
     return 0;
 }
 
