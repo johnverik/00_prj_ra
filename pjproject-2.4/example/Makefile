@@ -25,7 +25,7 @@ CFLAGS += -g
 
 SRCS =  verikdemo.c 
 SRCS +=  httpwrapper.c 
-SRCS +=  icecontroller.c 
+#SRCS +=  icecontroller.c 
 SRCS +=  getline.c 
 SRCS +=  xml2wrapper.c 
 
