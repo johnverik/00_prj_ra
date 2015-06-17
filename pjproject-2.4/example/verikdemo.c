@@ -1521,7 +1521,7 @@ static void icedemo_usage()
  * And here's the main()
  */
 
-#if 0
+#ifdef BUILD_VERIKDEMO
 
 
 int main(int argc, char *argv[])

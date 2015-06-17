@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "httpwrapper.h"
+#include "xml2wrapper.h"
 
 
 
@@ -11,7 +12,7 @@ char gUrl[] = "http://115.77.49.188:5001";
 enum COMMAND_IDX {
     CMD_HOME_GET = 0,
     CMD_DEVICE_GET,
-    CMD_HOME_GETT,
+    CMD_DEVICE_REGISTER,
     CMD_EXIT,
     CMD_MAX
 };
@@ -24,38 +25,91 @@ typedef struct cmd_handler_s{
 
 }cmd_handler_t;
 
+
+static int api_device_register(void *arg)
+{
+
+    char register_device[] = "<?xml version=\"1.0\"?> \
+    <deviceRegister> \
+    <device> \
+    <deviceId/> \
+    <uniqueId>Mydevice1</uniqueId> \
+    <modelCode>Sensor</modelCode> \
+    <home> \
+    <description>Test Home</description> \
+    <networkID>networkID1</networkID> \
+    </home> \
+    <firmwareVersion>firmware.01.pvt</firmwareVersion> \
+    </device> \
+    <reRegister>0</reRegister> \
+    <smartDevice> \
+    <description>smart phone</description> \
+    <uniqueId>unq_2305130636</uniqueId> \
+    </smartDevice> \
+            </deviceRegister>";
+
+    char full_url[256];
+    char *buff;
+
+    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
+
+    strcpy(full_url, gUrl); // plus URL
+    strcpy(&full_url[strlen(full_url)], "/device/registerDevice"); // plus API
+    http_post_request(full_url, register_device);
+    //printf("[DEBUG] API: %s \n", full_url);
+
+}
+
+
+
 static int api_home_get(void* arg)
 {
 	char full_url[256];
 	char *buff;
 	
-	printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
+    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
 
 	strcpy(full_url, gUrl); // plus URL 
 	strcpy(&full_url[strlen(full_url)], "/device/getDevicesFromNetwork/"); // plus API 
 	sprintf(&full_url[strlen(full_url)], "%s", arg); // plus agrument 	
-	printf("[DEBUG] API: %s \n", full_url);
+    //printf("[DEBUG] API: %s \n", full_url);
 	http_get_request(full_url, &buff);
-	// TODO: fine-tuning the result by using libxml 
-	printf("[Debug] received GET response: \n %s \n", buff);
+
+    xmlNode *device = xml_get_node_by_name(buff, "DeviceList");
+    xmlNode *cur_node;
+    for (cur_node = device->children; cur_node; cur_node = cur_node->next) {
+        if (cur_node->type == XML_ELEMENT_NODE)
+        {
+            char *device_name = (char *)xmlNodeGetContent(cur_node);
+            printf("\t %s \n", device_name);
+            free(device_name);
+        }
+    }
+
+
 	free(buff);
     return 0;
 }
 
 static int api_device_get(void* arg)
 {
-	char full_url[256];
+    char full_url[256];
 	char *buff;
 	
 	strcpy(full_url, gUrl);
 	strcpy(&full_url[strlen(full_url)], "/device/getDevice/");	
 	sprintf(&full_url[strlen(full_url)], "%s", arg);	
-	printf("[DEBUG] API: %s \n", full_url);
+    //printf("[DEBUG] API: %s \n", full_url);
 
 	http_get_request(full_url, &buff);
+    //printf("DEBUG recieved buffer: \n %s \n", buff);
 	// TODO: fine-tuning the result by using libxml 
-	printf("[Debug] received GET response: \n %s \n", buff);
-	free(buff);
+    char *value = xml_get_content_by_name(buff, "uniqueId");
+    printf("Device information: \n");
+    printf("\t Device ID: %s \n", value);
+    printf("=============================\n");
+    free(value);
+    free(buff);
     return 0;
 
 }
@@ -65,7 +119,7 @@ int cmd_more(void* arg);
 cmd_handler_t cmd_list[CMD_MAX] = {
     {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
     {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
-    {.cmd_idx = CMD_HOME_GETT, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
+    {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
 
@@ -109,18 +163,17 @@ int main(int argc, char *argv[])
         if (is_valid_int(cmd))
         {
             int idx = atoi(cmd);
-		printf("[DEBUG] command index : %d \n", idx );
+        //printf("[DEBUG] command index : %d \n", idx );
             switch (idx)
             {
             case CMD_HOME_GET:
-		api_home_get("networkID1");
-			break;
-            case CMD_HOME_GETT:
-		api_home_get("networkID1");
-			break;
-                //cmd_list[idx].cmd_func("networkID1");
+                cmd_list[idx].cmd_func("networkID1");
+                break;
             case CMD_DEVICE_GET:
                 cmd_list[idx].cmd_func("device1");
+                break;
+           case CMD_DEVICE_REGISTER:
+                cmd_list[idx].cmd_func("registerDevice");
                 break;
             case CMD_EXIT:
                 printf("BYE BYE :-*, :-*\n");
