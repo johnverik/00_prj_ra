@@ -11,9 +11,11 @@ CFLAGS += -lpjsua-x86_64-unknown-linux-gnu -lpjsip-ua-x86_64-unknown-linux-gnu -
 
 
 CFLAGS += -I../pjlib/include/ -I../pjlib-util/include  -I../pjnath/include
+CFLAGS += -L./ -lcurl 
+CFLAGS += -Wl,-rpath=./ 
 
 all: 
-	gcc -o $(APP) verikdemo1.c $(CFLAGS)  
+	gcc -o $(APP) verikdemo.c httpwrapper.c $(CFLAGS)  
 
 clean:
 	rm -f $(APP)

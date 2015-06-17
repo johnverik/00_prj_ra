@@ -33,6 +33,8 @@ char host_name[256];
 int portno;
 char sdp[1024];
 
+#define MAX_ICE_TRANS 10
+
 
 
 /* This is our global variables */
@@ -54,25 +56,38 @@ static struct app_t
         const char *log_file;
     } opt;
 
-    /* Our global variables */
-    pj_caching_pool	 cp;
-    pj_pool_t		*pool;
-    pj_thread_t		*thread;
-    pj_bool_t		 thread_quit_flag;
-    pj_ice_strans_cfg	 ice_cfg;
-    pj_ice_strans	*icest;
-    FILE		*log_fhnd;
+
+    int ice_trans_num;
+    struct ice_trans_s{
+
+        char name[256];
+        /* Our global variables */
+        pj_caching_pool	 cp;
+        pj_pool_t		*pool;
+        pj_thread_t		*thread;
+        pj_bool_t		 thread_quit_flag;
+
+        pj_ice_strans_cfg	 ice_cfg;
+        pj_ice_strans	*icest;
+
+        // TODO: should be an array so that it can support each ICE trans
+        struct rem_info
+        {
+            char		 ufrag[80];
+            char		 pwd[80];
+            unsigned	 comp_cnt;
+            pj_sockaddr	 def_addr[PJ_ICE_MAX_COMP];
+            unsigned	 cand_cnt;
+            pj_ice_sess_cand cand[PJ_ICE_ST_MAX_CAND];
+        } rem;
+
+        FILE		*log_fhnd;
+
+    }ice_trans_list[MAX_ICE_TRANS];
+
 
     /* Variables to store parsed remote ICE info */
-    struct rem_info
-    {
-        char		 ufrag[80];
-        char		 pwd[80];
-        unsigned	 comp_cnt;
-        pj_sockaddr	 def_addr[PJ_ICE_MAX_COMP];
-        unsigned	 cand_cnt;
-        pj_ice_sess_cand cand[PJ_ICE_ST_MAX_CAND];
-    } rem;
+
 
 } icedemo;
 
@@ -88,40 +103,48 @@ static void icedemo_perror(const char *title, pj_status_t status)
 /* Utility: display error message and exit application (usually
  * because of fatal error.
  */
-static void err_exit(const char *title, pj_status_t status)
+static void err_exit( const char *title, pj_status_t status)
 {
-    if (status != PJ_SUCCESS) {
-        icedemo_perror(title, status);
+
+    int i;
+    for (i = 0; i < MAX_ICE_TRANS; i++)
+    {
+        struct ice_trans_s* icetrans = &icedemo.ice_trans_list[i];
+
+        if (status != PJ_SUCCESS) {
+            icedemo_perror(title, status);
+        }
+        PJ_LOG(3,(THIS_FILE, "Shutting down.."));
+
+        if (icetrans->icest)
+            pj_ice_strans_destroy(icetrans->icest);
+
+        pj_thread_sleep(500);
+
+        icetrans->thread_quit_flag = PJ_TRUE;
+        if (icetrans->thread) {
+            pj_thread_join(icetrans->thread);
+            pj_thread_destroy(icetrans->thread);
+        }
+
+        if (icetrans->ice_cfg.stun_cfg.ioqueue)
+            pj_ioqueue_destroy(icetrans->ice_cfg.stun_cfg.ioqueue);
+
+        if (icetrans->ice_cfg.stun_cfg.timer_heap)
+            pj_timer_heap_destroy(icetrans->ice_cfg.stun_cfg.timer_heap);
+
+        pj_caching_pool_destroy(&icetrans->cp);
+
+        pj_shutdown();
+
+        if (icetrans->log_fhnd) {
+            fclose(icetrans->log_fhnd);
+            icetrans->log_fhnd = NULL;
+        }
+
     }
-    PJ_LOG(3,(THIS_FILE, "Shutting down.."));
-
-    if (icedemo.icest)
-        pj_ice_strans_destroy(icedemo.icest);
-    
-    pj_thread_sleep(500);
-
-    icedemo.thread_quit_flag = PJ_TRUE;
-    if (icedemo.thread) {
-        pj_thread_join(icedemo.thread);
-        pj_thread_destroy(icedemo.thread);
-    }
-
-    if (icedemo.ice_cfg.stun_cfg.ioqueue)
-        pj_ioqueue_destroy(icedemo.ice_cfg.stun_cfg.ioqueue);
-
-    if (icedemo.ice_cfg.stun_cfg.timer_heap)
-        pj_timer_heap_destroy(icedemo.ice_cfg.stun_cfg.timer_heap);
-
-    pj_caching_pool_destroy(&icedemo.cp);
-
-    pj_shutdown();
-
-    if (icedemo.log_fhnd) {
-        fclose(icedemo.log_fhnd);
-        icedemo.log_fhnd = NULL;
-    }
-
     exit(status != PJ_SUCCESS);
+
 }
 
 #define CHECK(expr)	status=expr; \
@@ -133,7 +156,7 @@ static void err_exit(const char *title, pj_status_t status)
  * This function checks for events from both timer and ioqueue (for
  * network events). It is invoked by the worker thread.
  */
-static pj_status_t handle_events(unsigned max_msec, unsigned *p_count)
+static pj_status_t handle_events(struct ice_trans_s* icetrans, unsigned max_msec, unsigned *p_count)
 {
     enum { MAX_NET_EVENTS = 1 };
     pj_time_val max_timeout = {0, 0};
@@ -145,7 +168,7 @@ static pj_status_t handle_events(unsigned max_msec, unsigned *p_count)
 
     /* Poll the timer to run it and also to retrieve the earliest entry. */
     timeout.sec = timeout.msec = 0;
-    c = pj_timer_heap_poll( icedemo.ice_cfg.stun_cfg.timer_heap, &timeout );
+    c = pj_timer_heap_poll( icetrans->ice_cfg.stun_cfg.timer_heap, &timeout );
     if (c > 0)
         count += c;
 
@@ -173,7 +196,7 @@ static pj_status_t handle_events(unsigned max_msec, unsigned *p_count)
      *   reported in timely manner.
      */
     do {
-        c = pj_ioqueue_poll( icedemo.ice_cfg.stun_cfg.ioqueue, &timeout);
+        c = pj_ioqueue_poll( icetrans->ice_cfg.stun_cfg.ioqueue, &timeout);
         if (c < 0) {
             pj_status_t err = pj_get_netos_error();
             pj_thread_sleep(PJ_TIME_VAL_MSEC(timeout));
@@ -199,12 +222,12 @@ static pj_status_t handle_events(unsigned max_msec, unsigned *p_count)
 /*
  * This is the worker thread that polls event in the background.
  */
-static int icedemo_worker_thread(void *unused)
+static int icedemo_worker_thread(struct ice_trans_s* icetrans, void *unused)
 {
     PJ_UNUSED_ARG(unused);
 
-    while (!icedemo.thread_quit_flag) {
-        handle_events(500, NULL);
+    while (!icetrans->thread_quit_flag) {
+        handle_events(icetrans, 500, NULL);
     }
 
     return 0;
@@ -282,6 +305,7 @@ static void cb_on_rx_data(pj_ice_strans *ice_st,
               (unsigned)size,
               (char*)pkt));
 
+    // TODO: how to know which session this RX belongs to
     hexDump(NULL, pkt, size);
 
 
@@ -307,16 +331,18 @@ static void cb_on_ice_complete(pj_ice_strans *ice_st,
         pj_strerror(status, errmsg, sizeof(errmsg));
         PJ_LOG(1,(THIS_FILE, "ICE %s failed: %s", opname, errmsg));
         pj_ice_strans_destroy(ice_st);
-        icedemo.icest = NULL;
+
+        // TODO: update the ICE transaction
+        //icedemo.icest = NULL;
     }
 }
 
 /* log callback to write to file */
-static void log_func(int level, const char *data, int len)
+static void log_func(struct ice_trans_s* icetrans,  int level, const char *data, int len)
 {
     pj_log_write(level, data, len);
-    if (icedemo.log_fhnd) {
-        if (fwrite(data, len, 1, icedemo.log_fhnd) != 1)
+    if (icetrans->log_fhnd) {
+        if (fwrite(data, len, 1, icetrans->log_fhnd) != 1)
             return;
     }
 }
@@ -326,14 +352,12 @@ static void log_func(int level, const char *data, int len)
  * once (and only once) during application initialization sequence by
  * main().
  */
+// Note: this icedemo_init is called just one time
+
 static pj_status_t icedemo_init(void)
 {
     pj_status_t status;
 
-    if (icedemo.opt.log_file) {
-        icedemo.log_fhnd = fopen(icedemo.opt.log_file, "a");
-        pj_log_set_log_func(&log_func);
-    }
 
     /* Initialize the libraries before anything else */
     CHECK( pj_init() );
@@ -341,111 +365,124 @@ static pj_status_t icedemo_init(void)
     CHECK( pjnath_init() );
 
     /* Must create pool factory, where memory allocations come from */
-    pj_caching_pool_init(&icedemo.cp, NULL, 0);
+    int i;
+    for (i = 0; i < MAX_ICE_TRANS; i++)
+    {
+        struct ice_trans_s* icetrans = &icedemo.ice_trans_list[i];
 
-    /* Init our ICE settings with null values */
-    pj_ice_strans_cfg_default(&icedemo.ice_cfg);
+        if (icedemo.opt.log_file) {
+            icetrans->log_fhnd = fopen(icedemo.opt.log_file, "a");
+            pj_log_set_log_func(&log_func);
+        }
 
-    icedemo.ice_cfg.stun_cfg.pf = &icedemo.cp.factory;
 
-    /* Create application memory pool */
-    icedemo.pool = pj_pool_create(&icedemo.cp.factory, "icedemo",
-                                  512, 512, NULL);
+        pj_caching_pool_init(&icetrans->cp, NULL, 0);
 
-    /* Create timer heap for timer stuff */
-    CHECK( pj_timer_heap_create(icedemo.pool, 100,
-                                &icedemo.ice_cfg.stun_cfg.timer_heap) );
+        /* Init our ICE settings with null values */
+        pj_ice_strans_cfg_default(&icetrans->ice_cfg);
 
-    /* and create ioqueue for network I/O stuff */
-    CHECK( pj_ioqueue_create(icedemo.pool, 16,
-                             &icedemo.ice_cfg.stun_cfg.ioqueue) );
+        icetrans->ice_cfg.stun_cfg.pf = &icetrans->cp.factory;
 
-    /* something must poll the timer heap and ioqueue,
+        /* Create application memory pool */
+        icetrans->pool = pj_pool_create(&icetrans->cp.factory, "icedemo",
+                                      512, 512, NULL);
+
+        /* Create timer heap for timer stuff */
+        CHECK( pj_timer_heap_create(icetrans->pool, 100,
+                                    &icetrans->ice_cfg.stun_cfg.timer_heap) );
+
+        /* and create ioqueue for network I/O stuff */
+        CHECK( pj_ioqueue_create(icetrans->pool, 16,
+                                 &icetrans->ice_cfg.stun_cfg.ioqueue) );
+
+        /* something must poll the timer heap and ioqueue,
      * unless we're on Symbian where the timer heap and ioqueue run
      * on themselves.
      */
-    CHECK( pj_thread_create(icedemo.pool, "icedemo", &icedemo_worker_thread,
-                            NULL, 0, 0, &icedemo.thread) );
+        CHECK( pj_thread_create(icetrans->pool, "icedemo", &icedemo_worker_thread,
+                                NULL, 0, 0, &icetrans->thread) );
 
-    icedemo.ice_cfg.af = pj_AF_INET();
+        icetrans->ice_cfg.af = pj_AF_INET();
 
-    /* Create DNS resolver if nameserver is set */
-    if (icedemo.opt.ns.slen) {
-        CHECK( pj_dns_resolver_create(&icedemo.cp.factory,
-                                      "resolver",
-                                      0,
-                                      icedemo.ice_cfg.stun_cfg.timer_heap,
-                                      icedemo.ice_cfg.stun_cfg.ioqueue,
-                                      &icedemo.ice_cfg.resolver) );
+        /* Create DNS resolver if nameserver is set */
+        if (icedemo.opt.ns.slen) {
+            CHECK( pj_dns_resolver_create(&icetrans->cp.factory,
+                                          "resolver",
+                                          0,
+                                          icetrans->ice_cfg.stun_cfg.timer_heap,
+                                          icetrans->ice_cfg.stun_cfg.ioqueue,
+                                          &icetrans->ice_cfg.resolver) );
 
-        CHECK( pj_dns_resolver_set_ns(icedemo.ice_cfg.resolver, 1,
-                                      &icedemo.opt.ns, NULL) );
-    }
-
-    /* -= Start initializing ICE stream transport config =- */
-
-    /* Maximum number of host candidates */
-    if (icedemo.opt.max_host != -1)
-        icedemo.ice_cfg.stun.max_host_cands = icedemo.opt.max_host;
-
-    /* Nomination strategy */
-    if (icedemo.opt.regular)
-        icedemo.ice_cfg.opt.aggressive = PJ_FALSE;
-    else
-        icedemo.ice_cfg.opt.aggressive = PJ_TRUE;
-
-    /* Configure STUN/srflx candidate resolution */
-    if (icedemo.opt.stun_srv.slen) {
-        char *pos;
-
-        /* Command line option may contain port number */
-        if ((pos=pj_strchr(&icedemo.opt.stun_srv, ':')) != NULL) {
-            icedemo.ice_cfg.stun.server.ptr = icedemo.opt.stun_srv.ptr;
-            icedemo.ice_cfg.stun.server.slen = (pos - icedemo.opt.stun_srv.ptr);
-
-            icedemo.ice_cfg.stun.port = (pj_uint16_t)atoi(pos+1);
-        } else {
-            icedemo.ice_cfg.stun.server = icedemo.opt.stun_srv;
-            icedemo.ice_cfg.stun.port = PJ_STUN_PORT;
+            CHECK( pj_dns_resolver_set_ns(icetrans->ice_cfg.resolver, 1,
+                                          &icedemo.opt.ns, NULL) );
         }
 
-        /* For this demo app, configure longer STUN keep-alive time
-     * so that it does't clutter the screen output.
-     */
-        icedemo.ice_cfg.stun.cfg.ka_interval = KA_INTERVAL;
-    }
 
-    /* Configure TURN candidate */
-    if (icedemo.opt.turn_srv.slen) {
-        char *pos;
+        /* -= Start initializing ICE stream transport config =- */
 
-        /* Command line option may contain port number */
-        if ((pos=pj_strchr(&icedemo.opt.turn_srv, ':')) != NULL) {
-            icedemo.ice_cfg.turn.server.ptr = icedemo.opt.turn_srv.ptr;
-            icedemo.ice_cfg.turn.server.slen = (pos - icedemo.opt.turn_srv.ptr);
+        /* Maximum number of host candidates */
+        if (icedemo.opt.max_host != -1)
+            icetrans->ice_cfg.stun.max_host_cands = icedemo.opt.max_host;
 
-            icedemo.ice_cfg.turn.port = (pj_uint16_t)atoi(pos+1);
-        } else {
-            icedemo.ice_cfg.turn.server = icedemo.opt.turn_srv;
-            icedemo.ice_cfg.turn.port = PJ_STUN_PORT;
-        }
-
-        /* TURN credential */
-        icedemo.ice_cfg.turn.auth_cred.type = PJ_STUN_AUTH_CRED_STATIC;
-        icedemo.ice_cfg.turn.auth_cred.data.static_cred.username = icedemo.opt.turn_username;
-        icedemo.ice_cfg.turn.auth_cred.data.static_cred.data_type = PJ_STUN_PASSWD_PLAIN;
-        icedemo.ice_cfg.turn.auth_cred.data.static_cred.data = icedemo.opt.turn_password;
-
-        /* Connection type to TURN server */
-        if (icedemo.opt.turn_tcp)
-            icedemo.ice_cfg.turn.conn_type = PJ_TURN_TP_TCP;
+        /* Nomination strategy */
+        if (icedemo.opt.regular)
+            icetrans->ice_cfg.opt.aggressive = PJ_FALSE;
         else
-            icedemo.ice_cfg.turn.conn_type = PJ_TURN_TP_UDP;
+            icetrans->ice_cfg.opt.aggressive = PJ_TRUE;
 
-        /* For this demo app, configure longer keep-alive time
+        /* Configure STUN/srflx candidate resolution */
+        if (icedemo.opt.stun_srv.slen) {
+            char *pos;
+
+            /* Command line option may contain port number */
+            if ((pos=pj_strchr(&icedemo.opt.stun_srv, ':')) != NULL) {
+                icetrans->ice_cfg.stun.server.ptr = icedemo.opt.stun_srv.ptr;
+                icetrans->ice_cfg.stun.server.slen = (pos - icedemo.opt.stun_srv.ptr);
+
+                icetrans->ice_cfg.stun.port = (pj_uint16_t)atoi(pos+1);
+            } else {
+                icetrans->ice_cfg.stun.server = icedemo.opt.stun_srv;
+                icetrans->ice_cfg.stun.port = PJ_STUN_PORT;
+            }
+
+            /* For this demo app, configure longer STUN keep-alive time
      * so that it does't clutter the screen output.
      */
-        icedemo.ice_cfg.turn.alloc_param.ka_interval = KA_INTERVAL;
+            icetrans->ice_cfg.stun.cfg.ka_interval = KA_INTERVAL;
+        }
+
+        /* Configure TURN candidate */
+        if (icedemo.opt.turn_srv.slen) {
+            char *pos;
+
+            /* Command line option may contain port number */
+            if ((pos=pj_strchr(&icedemo.opt.turn_srv, ':')) != NULL) {
+                icetrans->ice_cfg.turn.server.ptr = icedemo.opt.turn_srv.ptr;
+                icetrans->ice_cfg.turn.server.slen = (pos - icedemo.opt.turn_srv.ptr);
+
+                icetrans->ice_cfg.turn.port = (pj_uint16_t)atoi(pos+1);
+            } else {
+                icetrans->ice_cfg.turn.server = icedemo.opt.turn_srv;
+                icetrans->ice_cfg.turn.port = PJ_STUN_PORT;
+            }
+
+            /* TURN credential */
+            icetrans->ice_cfg.turn.auth_cred.type = PJ_STUN_AUTH_CRED_STATIC;
+            icetrans->ice_cfg.turn.auth_cred.data.static_cred.username = icedemo.opt.turn_username;
+            icetrans->ice_cfg.turn.auth_cred.data.static_cred.data_type = PJ_STUN_PASSWD_PLAIN;
+            icetrans->ice_cfg.turn.auth_cred.data.static_cred.data = icedemo.opt.turn_password;
+
+            /* Connection type to TURN server */
+            if (icedemo.opt.turn_tcp)
+                icetrans->ice_cfg.turn.conn_type = PJ_TURN_TP_TCP;
+            else
+                icetrans->ice_cfg.turn.conn_type = PJ_TURN_TP_UDP;
+
+            /* For this demo app, configure longer keep-alive time
+     * so that it does't clutter the screen output.
+     */
+            icetrans->ice_cfg.turn.alloc_param.ka_interval = KA_INTERVAL;
+        }
     }
 
     /* -= That's it for now, initialization is complete =- */
@@ -456,12 +493,12 @@ static pj_status_t icedemo_init(void)
 /*
  * Create ICE stream transport instance, invoked from the menu.
  */
-static void icedemo_create_instance(void)
+static void icedemo_create_instance(struct ice_trans_s* icetrans)
 {
     pj_ice_strans_cb icecb;
     pj_status_t status;
 
-    if (icedemo.icest != NULL) {
+    if (icetrans->icest != NULL) {
         puts("ICE instance already created, destroy it first");
         return;
     }
@@ -472,12 +509,14 @@ static void icedemo_create_instance(void)
     icecb.on_ice_complete = cb_on_ice_complete;
 
     /* create the instance */
+    // TODO: just wonder if the object name should be unique among ICE transation
+
     status = pj_ice_strans_create("icedemo",		    /* object name  */
-                                  &icedemo.ice_cfg,	    /* settings	    */
+                                  &icetrans->ice_cfg,	    /* settings	    */
                                   icedemo.opt.comp_cnt,	    /* comp_cnt	    */
                                   NULL,			    /* user data    */
                                   &icecb,			    /* callback	    */
-                                  &icedemo.icest)		    /* instance ptr */
+                                  &icetrans->icest)		    /* instance ptr */
             ;
     if (status != PJ_SUCCESS)
         icedemo_perror("error creating ice", status);
@@ -486,26 +525,26 @@ static void icedemo_create_instance(void)
 }
 
 /* Utility to nullify parsed remote info */
-static void reset_rem_info(void)
+static void reset_rem_info(struct ice_trans_s* icetrans)
 {
-    pj_bzero(&icedemo.rem, sizeof(icedemo.rem));
+    pj_bzero(&icetrans->rem, sizeof(icetrans->rem));
 }
 
 
 /*
  * Destroy ICE stream transport instance, invoked from the menu.
  */
-static void icedemo_destroy_instance(void)
+static void icedemo_destroy_instance(struct ice_trans_s* icetrans)
 {
-    if (icedemo.icest == NULL) {
+    if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
 
-    pj_ice_strans_destroy(icedemo.icest);
-    icedemo.icest = NULL;
+    pj_ice_strans_destroy(icetrans->icest);
+    icetrans->icest = NULL;
 
-    reset_rem_info();
+    reset_rem_info(icetrans);
 
     PJ_LOG(3,(THIS_FILE, "ICE instance destroyed"));
 }
@@ -514,57 +553,57 @@ static void icedemo_destroy_instance(void)
 /*
  * Create ICE session, invoked from the menu.
  */
-static void icedemo_init_session(unsigned rolechar)
+static void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
 {
     pj_ice_sess_role role = (pj_tolower((pj_uint8_t)rolechar)=='o' ?
                                  PJ_ICE_SESS_ROLE_CONTROLLING :
                                  PJ_ICE_SESS_ROLE_CONTROLLED);
     pj_status_t status;
 
-    if (icedemo.icest == NULL) {
+    if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
 
-    if (pj_ice_strans_has_sess(icedemo.icest)) {
+    if (pj_ice_strans_has_sess(icetrans->icest)) {
         PJ_LOG(1,(THIS_FILE, "Error: Session already created"));
         return;
     }
 
-    status = pj_ice_strans_init_ice(icedemo.icest, role, NULL, NULL);
+    status = pj_ice_strans_init_ice(icetrans->icest, role, NULL, NULL);
     if (status != PJ_SUCCESS)
         icedemo_perror("error creating session", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE session created"));
 
-    reset_rem_info();
+    reset_rem_info(icetrans);
 }
 
 
 /*
  * Stop/destroy ICE session, invoked from the menu.
  */
-static void icedemo_stop_session(void)
+static void icedemo_stop_session(struct ice_trans_s* icetrans)
 {
     pj_status_t status;
 
-    if (icedemo.icest == NULL) {
+    if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
 
-    if (!pj_ice_strans_has_sess(icedemo.icest)) {
+    if (!pj_ice_strans_has_sess(icetrans->icest)) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE session, initialize first"));
         return;
     }
 
-    status = pj_ice_strans_stop_ice(icedemo.icest);
+    status = pj_ice_strans_stop_ice(icetrans->icest);
     if (status != PJ_SUCCESS)
         icedemo_perror("error stopping session", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE session stopped"));
 
-    reset_rem_info();
+    reset_rem_info(icetrans);
 }
 
 #define PRINT(...)	    \
@@ -606,7 +645,7 @@ static int print_cand(char buffer[], unsigned maxlen,
 /* 
  * Encode ICE information in SDP.
  */
-static int encode_session(char buffer[], unsigned maxlen)
+static int encode_session(struct ice_trans_s* icetrans,char buffer[], unsigned maxlen)
 {
     char *p = buffer;
     unsigned comp;
@@ -618,7 +657,7 @@ static int encode_session(char buffer[], unsigned maxlen)
     PRINT("v=0\no=- 3414953978 3414953978 IN IP4 localhost\ns=ice\nt=0 0\n");
 
     /* Get ufrag and pwd from current session */
-    pj_ice_strans_get_ufrag_pwd(icedemo.icest, &local_ufrag, &local_pwd,
+    pj_ice_strans_get_ufrag_pwd(icetrans->icest, &local_ufrag, &local_pwd,
                                 NULL, NULL);
 
     /* Write the a=ice-ufrag and a=ice-pwd attributes */
@@ -635,7 +674,7 @@ static int encode_session(char buffer[], unsigned maxlen)
         char ipaddr[PJ_INET6_ADDRSTRLEN];
 
         /* Get default candidate for the component */
-        status = pj_ice_strans_get_def_cand(icedemo.icest, comp+1, &cand[0]);
+        status = pj_ice_strans_get_def_cand(icetrans->icest, comp+1, &cand[0]);
         if (status != PJ_SUCCESS)
             return -status;
 
@@ -663,7 +702,7 @@ static int encode_session(char buffer[], unsigned maxlen)
 
         /* Enumerate all candidates for this component */
         cand_cnt = PJ_ARRAY_SIZE(cand);
-        status = pj_ice_strans_enum_cands(icedemo.icest, comp+1,
+        status = pj_ice_strans_enum_cands(icetrans->icest, comp+1,
                                           &cand_cnt, cand);
         if (status != PJ_SUCCESS)
             return -status;
@@ -692,12 +731,12 @@ static int encode_session(char buffer[], unsigned maxlen)
 
 
 
-static void icedemo_show_ice(void)
+static void icedemo_show_ice(struct ice_trans_s* icetrans)
 {
     static char buffer[1000];
     int len;
 
-    if (icedemo.icest == NULL) {
+    if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
@@ -706,27 +745,27 @@ static void icedemo_show_ice(void)
     puts("---------------");
     printf("Component count    : %d\n", icedemo.opt.comp_cnt);
     printf("Status             : ");
-    if (pj_ice_strans_sess_is_complete(icedemo.icest))
+    if (pj_ice_strans_sess_is_complete(icetrans->icest))
         puts("negotiation complete");
-    else if (pj_ice_strans_sess_is_running(icedemo.icest))
+    else if (pj_ice_strans_sess_is_running(icetrans->icest))
         puts("negotiation is in progress");
-    else if (pj_ice_strans_has_sess(icedemo.icest))
+    else if (pj_ice_strans_has_sess(icetrans->icest))
         puts("session ready");
     else
         puts("session not created");
 
-    if (!pj_ice_strans_has_sess(icedemo.icest)) {
+    if (!pj_ice_strans_has_sess(icetrans->icest)) {
         puts("Create the session first to see more info");
         return;
     }
 
     printf("Negotiated comp_cnt: %d\n",
-           pj_ice_strans_get_running_comp_cnt(icedemo.icest));
+           pj_ice_strans_get_running_comp_cnt(icetrans->icest));
     printf("Role               : %s\n",
-           pj_ice_strans_get_role(icedemo.icest)==PJ_ICE_SESS_ROLE_CONTROLLED ?
+           pj_ice_strans_get_role(icetrans->icest)==PJ_ICE_SESS_ROLE_CONTROLLED ?
                "controlled" : "controlling");
 
-    len = encode_session(buffer, sizeof(buffer));
+    len = encode_session(icetrans, buffer, sizeof(buffer));
     if (len < 0)
         err_exit("not enough buffer to show ICE status", -len);
 
@@ -753,17 +792,17 @@ static void icedemo_show_ice(void)
     puts("");
     puts("Remote info:\n"
          "----------------------");
-    if (icedemo.rem.cand_cnt==0) {
+    if (icetrans->rem.cand_cnt==0) {
         puts("No remote info yet");
     } else {
         unsigned i;
 
-        printf("Remote ufrag       : %s\n", icedemo.rem.ufrag);
-        printf("Remote password    : %s\n", icedemo.rem.pwd);
-        printf("Remote cand. cnt.  : %d\n", icedemo.rem.cand_cnt);
+        printf("Remote ufrag       : %s\n", icetrans->rem.ufrag);
+        printf("Remote password    : %s\n", icetrans->rem.pwd);
+        printf("Remote cand. cnt.  : %d\n", icetrans->rem.cand_cnt);
 
-        for (i=0; i<icedemo.rem.cand_cnt; ++i) {
-            len = print_cand(buffer, sizeof(buffer), &icedemo.rem.cand[i]);
+        for (i=0; i<icetrans->rem.cand_cnt; ++i) {
+            len = print_cand(buffer, sizeof(buffer), &icetrans->rem.cand[i]);
             if (len < 0)
                 err_exit("not enough buffer to show ICE status", -len);
 
@@ -773,9 +812,13 @@ static void icedemo_show_ice(void)
 }
 
 
-// TODO: this function will get peer information cloud
+// TODO:
+// 1. Register the peer to cloud
+// How to get peer information
+// Extract IP address along with its port of local address, flxadd, turn address
+// 2. Get peer from cloud
 
-static void icedemo_input_remote2(const char *usr_id)
+static void icedemo_input_remote2(struct ice_trans_s* icetrans, const char *usr_id)
 {
     char linebuf[80];
     unsigned media_cnt = 0;
@@ -785,7 +828,7 @@ static void icedemo_input_remote2(const char *usr_id)
 
     puts("Paste SDP from remote host, end with empty line");
 
-    reset_rem_info();
+    reset_rem_info(icetrans);
 
     comp0_addr[0] = '\0';
 
@@ -860,9 +903,9 @@ static void icedemo_input_remote2(const char *usr_id)
         {
             char *attr = strtok(line+2, ": \t\r\n");
             if (strcmp(attr, "ice-ufrag")==0) {
-                strcpy(icedemo.rem.ufrag, attr+strlen(attr)+1);
+                strcpy(icetrans->rem.ufrag, attr+strlen(attr)+1);
             } else if (strcmp(attr, "ice-pwd")==0) {
-                strcpy(icedemo.rem.pwd, attr+strlen(attr)+1);
+                strcpy(icetrans->rem.pwd, attr+strlen(attr)+1);
             } else if (strcmp(attr, "rtcp")==0) {
                 char *val = attr+strlen(attr)+1;
                 int af, cnt;
@@ -882,15 +925,15 @@ static void icedemo_input_remote2(const char *usr_id)
                 else
                     af = pj_AF_INET();
 
-                pj_sockaddr_init(af, &icedemo.rem.def_addr[1], NULL, 0);
+                pj_sockaddr_init(af, &icetrans->rem.def_addr[1], NULL, 0);
                 tmp_addr = pj_str(ip);
-                status = pj_sockaddr_set_str_addr(af, &icedemo.rem.def_addr[1],
+                status = pj_sockaddr_set_str_addr(af, &icetrans->rem.def_addr[1],
                                                   &tmp_addr);
                 if (status != PJ_SUCCESS) {
                     PJ_LOG(1,(THIS_FILE, "Invalid IP address"));
                     goto on_error;
                 }
-                pj_sockaddr_set_port(&icedemo.rem.def_addr[1], (pj_uint16_t)port);
+                pj_sockaddr_set_port(&icetrans->rem.def_addr[1], (pj_uint16_t)port);
 
             } else if (strcmp(attr, "candidate")==0) {
                 char *sdpcand = attr+strlen(attr)+1;
@@ -914,7 +957,7 @@ static void icedemo_input_remote2(const char *usr_id)
                     goto on_error;
                 }
 
-                cand = &icedemo.rem.cand[icedemo.rem.cand_cnt];
+                cand = &icetrans->rem.cand[icetrans->rem.cand_cnt];
                 pj_bzero(cand, sizeof(*cand));
 
                 if (strcmp(type, "host")==0)
@@ -930,7 +973,7 @@ static void icedemo_input_remote2(const char *usr_id)
                 }
 
                 cand->comp_id = (pj_uint8_t)comp_id;
-                pj_strdup2(icedemo.pool, &cand->foundation, foundation);
+                pj_strdup2(icetrans->pool, &cand->foundation, foundation);
                 cand->prio = prio;
 
                 if (strchr(ipaddr, ':'))
@@ -949,20 +992,20 @@ static void icedemo_input_remote2(const char *usr_id)
 
                 pj_sockaddr_set_port(&cand->addr, (pj_uint16_t)port);
 
-                ++icedemo.rem.cand_cnt;
+                ++icetrans->rem.cand_cnt;
 
-                if (cand->comp_id > icedemo.rem.comp_cnt)
-                    icedemo.rem.comp_cnt = cand->comp_id;
+                if (cand->comp_id > icetrans->rem.comp_cnt)
+                    icetrans->rem.comp_cnt = cand->comp_id;
             }
         }
             break;
         }
     }
 
-    if (icedemo.rem.cand_cnt==0 ||
-            icedemo.rem.ufrag[0]==0 ||
-            icedemo.rem.pwd[0]==0 ||
-            icedemo.rem.comp_cnt == 0)
+    if (icetrans->rem.cand_cnt==0 ||
+            icetrans->rem.ufrag[0]==0 ||
+            icetrans->rem.pwd[0]==0 ||
+            icetrans->rem.comp_cnt == 0)
     {
         PJ_LOG(1, (THIS_FILE, "Error: not enough info"));
         goto on_error;
@@ -981,58 +1024,58 @@ static void icedemo_input_remote2(const char *usr_id)
         else
             af = pj_AF_INET();
 
-        pj_sockaddr_init(af, &icedemo.rem.def_addr[0], NULL, 0);
+        pj_sockaddr_init(af, &icetrans->rem.def_addr[0], NULL, 0);
         tmp_addr = pj_str(comp0_addr);
-        status = pj_sockaddr_set_str_addr(af, &icedemo.rem.def_addr[0],
+        status = pj_sockaddr_set_str_addr(af, &icetrans->rem.def_addr[0],
                                           &tmp_addr);
         if (status != PJ_SUCCESS) {
             PJ_LOG(1,(THIS_FILE, "Invalid IP address in c= line"));
             goto on_error;
         }
-        pj_sockaddr_set_port(&icedemo.rem.def_addr[0], (pj_uint16_t)comp0_port);
+        pj_sockaddr_set_port(&icetrans->rem.def_addr[0], (pj_uint16_t)comp0_port);
     }
 
     PJ_LOG(3, (THIS_FILE, "Done, %d remote candidate(s) added",
-               icedemo.rem.cand_cnt));
+               icetrans->rem.cand_cnt));
     fclose(file);
 
     return;
 
 on_error:
-    reset_rem_info();
+    reset_rem_info(icetrans);
 }
 
 
 /*
  * Start ICE negotiation! This function is invoked from the menu.
  */
-static void icedemo_start_nego(void)
+static void icedemo_start_nego(struct ice_trans_s* icetrans)
 {
     pj_str_t rufrag, rpwd;
     pj_status_t status;
 
-    if (icedemo.icest == NULL) {
+    if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
 
-    if (!pj_ice_strans_has_sess(icedemo.icest)) {
+    if (!pj_ice_strans_has_sess(icetrans->icest)) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE session, initialize first"));
         return;
     }
 
-    if (icedemo.rem.cand_cnt == 0) {
+    if (icetrans->rem.cand_cnt == 0) {
         PJ_LOG(1,(THIS_FILE, "Error: No remote info, input remote info first"));
         return;
     }
 
     PJ_LOG(3,(THIS_FILE, "Starting ICE negotiation.."));
 
-    status = pj_ice_strans_start_ice(icedemo.icest,
-                                     pj_cstr(&rufrag, icedemo.rem.ufrag),
-                                     pj_cstr(&rpwd, icedemo.rem.pwd),
-                                     icedemo.rem.cand_cnt,
-                                     icedemo.rem.cand);
+    status = pj_ice_strans_start_ice(icetrans->icest,
+                                     pj_cstr(&rufrag, icetrans->rem.ufrag),
+                                     pj_cstr(&rpwd, icetrans->rem.pwd),
+                                     icetrans->rem.cand_cnt,
+                                     icetrans->rem.cand);
     if (status != PJ_SUCCESS)
         icedemo_perror("Error starting ICE", status);
     else
@@ -1043,35 +1086,35 @@ static void icedemo_start_nego(void)
 /*
  * Send application data to remote agent.
  */
-static void icedemo_send_data(unsigned comp_id, const char *data)
+static void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
 {
     pj_status_t status;
 
-    if (icedemo.icest == NULL) {
+    if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
 
-    if (!pj_ice_strans_has_sess(icedemo.icest)) {
+    if (!pj_ice_strans_has_sess(icetrans->icest)) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE session, initialize first"));
         return;
     }
 
     /*
-    if (!pj_ice_strans_sess_is_complete(icedemo.icest)) {
+    if (!pj_ice_strans_sess_is_complete(icetrans->icest)) {
     PJ_LOG(1,(THIS_FILE, "Error: ICE negotiation has not been started or is in progress"));
     return;
     }
     */
 
-    if (comp_id<1||comp_id>pj_ice_strans_get_running_comp_cnt(icedemo.icest)) {
+    if (comp_id<1||comp_id>pj_ice_strans_get_running_comp_cnt(icetrans->icest)) {
         PJ_LOG(1,(THIS_FILE, "Error: invalid component ID"));
         return;
     }
 
-    status = pj_ice_strans_sendto(icedemo.icest, comp_id, data, strlen(data),
-                                  &icedemo.rem.def_addr[comp_id-1],
-                                  pj_sockaddr_get_len(&icedemo.rem.def_addr[comp_id-1]));
+    status = pj_ice_strans_sendto(icetrans->icest, comp_id, data, strlen(data),
+                                  &icetrans->rem.def_addr[comp_id-1],
+                                  pj_sockaddr_get_len(&icetrans->rem.def_addr[comp_id-1]));
     if (status != PJ_SUCCESS)
         icedemo_perror("Error sending data", status);
     else
@@ -1339,6 +1382,15 @@ static int peer_get_dsp(const char *usr_id, char *dsp)
 }
 
 
+static struct ice_trans_s* get_ice_tran_from_name(char *name)
+{
+    int i;
+    for (i = 0; i < MAX_ICE_TRANS; i++)
+        if (strcmp(name, icedemo.ice_trans_list[i].name) == 0)
+            return &icedemo.ice_trans_list[i];
+    return NULL;
+}
+
 
 /*
  * Main console loop.
@@ -1347,12 +1399,20 @@ static void icedemo_console(void)
 {
     pj_bool_t app_quit = PJ_FALSE;
 
-    icedemo_create_instance();
-    usleep(1*1000*1000);
-    icedemo_init_session("o");
+    // TODO: iterate
+    int i;
+    for (i = 0; i < MAX_ICE_TRANS; i++)
+    {
+        struct ice_trans_s* icetrans = &icedemo.ice_trans_list[i];
 
-    usleep(4*1000*1000);
-    icedemo_show_ice();
+        icedemo_create_instance(icetrans);
+        usleep(1*1000*1000);
+        icedemo_init_session(icetrans, "o");
+
+        usleep(1*1000*1000);
+        icedemo_show_ice(icetrans);
+
+    }
 
     peer_put_dsp(usrid, sdp);
     while (!app_quit) {
@@ -1388,13 +1448,17 @@ static void icedemo_console(void)
             char _usr_id[256];
             char _usr_sdp[1024];
 
+
             gets(_usr_id);
 
             peer_get_dsp(_usr_id, _usr_sdp);
 
+            // ADD:
+            struct ice_trans_s *ice_tran =  get_ice_tran_from_name(_usr_id);
             // start conversation with an user
-            icedemo_input_remote2(_usr_id);
-            icedemo_start_nego();
+            // TODO: Get SDP from cloud
+            icedemo_input_remote2(ice_tran, _usr_id);
+            icedemo_start_nego(ice_tran);
 
             char msg[256];
             do{
@@ -1402,7 +1466,7 @@ static void icedemo_console(void)
                 gets(msg);
                 if (strcmp(msg, "quit") == 0)
                     break;
-                icedemo_send_data(1, msg);
+                icedemo_send_data(ice_tran, 1, msg);
 
             } while(1);
 
@@ -1411,68 +1475,6 @@ static void icedemo_console(void)
 
         }
 
-#if 0 
-
-        if (strcmp(cmd, "create")==0 || strcmp(cmd, "c")==0) {
-
-            icedemo_create_instance();
-
-        } else if (strcmp(cmd, "destroy")==0 || strcmp(cmd, "d")==0) {
-
-            icedemo_destroy_instance();
-
-        } else if (strcmp(cmd, "init")==0 || strcmp(cmd, "i")==0) {
-
-            char *role = strtok(NULL, SEP);
-            if (role)
-                icedemo_init_session(*role);
-            else
-                puts("error: Role required");
-
-        } else if (strcmp(cmd, "stop")==0 || strcmp(cmd, "e")==0) {
-
-            icedemo_stop_session();
-
-        } else if (strcmp(cmd, "show")==0 || strcmp(cmd, "s")==0) {
-
-            icedemo_show_ice();
-
-        } else if (strcmp(cmd, "remote")==0 || strcmp(cmd, "r")==0) {
-
-            icedemo_input_remote();
-
-        } else if (strcmp(cmd, "start")==0 || strcmp(cmd, "b")==0) {
-
-            icedemo_start_nego();
-
-        } else if (strcmp(cmd, "send")==0 || strcmp(cmd, "x")==0) {
-
-            char *comp = strtok(NULL, SEP);
-
-            if (!comp) {
-                PJ_LOG(1,(THIS_FILE, "Error: component ID required"));
-            } else {
-                char *data = comp + strlen(comp) + 1;
-                if (!data)
-                    data = "";
-                icedemo_send_data(atoi(comp), data);
-            }
-
-        } else if (strcmp(cmd, "help")==0 || strcmp(cmd, "h")==0) {
-
-            icedemo_help_menu();
-
-        } else if (strcmp(cmd, "quit")==0 || strcmp(cmd, "q")==0) {
-
-            app_quit = PJ_TRUE;
-
-        } else {
-
-            printf("Invalid command '%s'\n", cmd);
-
-        }
-
-#endif
     }
 
 }
