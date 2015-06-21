@@ -23,7 +23,7 @@ CFLAGS += -Wl,-rpath=./
 #debug
 CFLAGS += -g
 
-SRCS =  verikdemo.c 
+SRCS =   icewrapper.c 
 SRCS +=  httpwrapper.c 
 #SRCS +=  icecontroller.c 
 SRCS +=  getline.c 

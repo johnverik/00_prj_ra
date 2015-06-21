@@ -74,7 +74,7 @@ static size_t write_data(void *ptr, size_t size, size_t nmemb, struct BufferData
 }
 
 
-int http_get_request(char *url, char **buff)
+int http_get_request(char *url, char *buff)
 {
     CURL *curl;
     CURLcode res;
@@ -109,7 +109,9 @@ int http_get_request(char *url, char **buff)
 
         //printf("[Received data: %s \n", data.data);
     }
-    *buff = data.data;
+
+    strcpy(buff, data.data);
+    free(data.data);
 
     return 0;
 }

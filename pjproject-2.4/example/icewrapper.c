@@ -18,15 +18,22 @@
 #include <string.h>
 #include <getopt.h>
 
-#include "icewrapper.h"
-
 
 
 #include "httpwrapper.h"
 #include "xml2wrapper.h"
 
-struct app_t icedemo;
 
+#include "icewrapper.h"
+
+char gUrl[] = "http://115.77.49.188:5001";
+char usrid[256];
+char host_name[256];
+int portno;
+char sdp[1024];
+
+
+struct app_t icedemo;
 
 
 /* Utility to display error messages */
@@ -45,10 +52,12 @@ static void err_exit( const char *title, pj_status_t status)
 {
 
     int i;
+    struct ice_trans_s* icetrans = &icedemo.ice_receive;
+#ifdef MULTIPLE
     for (i = 0; i < MAX_ICE_TRANS; i++)
     {
-        struct ice_trans_s* icetrans = &icedemo.ice_trans_list[i];
-
+        icetrans = &icedemo.ice_trans_list[i];
+#endif
         if (status != PJ_SUCCESS) {
             icedemo_perror(title, status);
         }
@@ -79,8 +88,9 @@ static void err_exit( const char *title, pj_status_t status)
             fclose(icetrans->log_fhnd);
             icetrans->log_fhnd = NULL;
         }
-
+#ifdef MULTIPLE
     }
+#endif
     exit(status != PJ_SUCCESS);
 
 }
@@ -160,12 +170,14 @@ static pj_status_t handle_events(struct ice_trans_s* icetrans, unsigned max_msec
 /*
  * This is the worker thread that polls event in the background.
  */
-static int icedemo_worker_thread(struct ice_trans_s* icetrans, void *unused)
+static int icedemo_worker_thread( void *unused)
 {
     PJ_UNUSED_ARG(unused);
 
-    while (!icetrans->thread_quit_flag) {
-        handle_events(icetrans, 500, NULL);
+    ice_trans_t* tmp_icetrans =  (ice_trans_t *)(unused);
+
+    while (!tmp_icetrans->thread_quit_flag) {
+        handle_events(tmp_icetrans, 500, NULL);
     }
 
     return 0;
@@ -303,11 +315,19 @@ static pj_status_t icedemo_init(void)
     CHECK( pjnath_init() );
 
     /* Must create pool factory, where memory allocations come from */
+#ifdef MULTIPLE
     int i;
-    for (i = 0; i < MAX_ICE_TRANS; i++)
+    for (i = 0; i <= MAX_ICE_TRANS; i++)
     {
-        struct ice_trans_s* icetrans = &icedemo.ice_trans_list[i];
 
+        struct ice_trans_s* icetrans;
+        if (i < MAX_ICE_TRANS)
+            icetrans  = &icedemo.ice_trans_list[i];
+        else
+            icetrans = &icedemo.ice_receive;
+#else
+    struct ice_trans_s* icetrans = &icedemo.ice_receive;
+#endif
         if (icedemo.opt.log_file) {
             icetrans->log_fhnd = fopen(icedemo.opt.log_file, "a");
             pj_log_set_log_func(&log_func);
@@ -338,7 +358,7 @@ static pj_status_t icedemo_init(void)
      * on themselves.
      */
         CHECK( pj_thread_create(icetrans->pool, "icedemo", &icedemo_worker_thread,
-                                NULL, 0, 0, &icetrans->thread) );
+                                icetrans, 0, 0, &icetrans->thread) );
 
         icetrans->ice_cfg.af = pj_AF_INET();
 
@@ -421,7 +441,9 @@ static pj_status_t icedemo_init(void)
      */
             icetrans->ice_cfg.turn.alloc_param.ka_interval = KA_INTERVAL;
         }
+        #ifdef MULTIPLE
     }
+#endif
 
     /* -= That's it for now, initialization is complete =- */
     return PJ_SUCCESS;
@@ -580,10 +602,40 @@ static int print_cand(char buffer[], unsigned maxlen,
     return (int)(p-buffer);
 }
 
+static int print_cand_to_xml(char buffer[], unsigned maxlen,
+                      const pj_ice_sess_cand *cand)
+{
+    char ipaddr[PJ_INET6_ADDRSTRLEN];
+    char *p = buffer;
+    int printed;
+
+    PRINT("<candidate><foundation>%.*s</foundation> <comp_id>%u</comp_id> <transport>UDP</transport> <prio>%u</prio> <ip>%s</ip> <port>%u</port>",
+          (int)cand->foundation.slen,
+          cand->foundation.ptr,
+          (unsigned)cand->comp_id,
+          cand->prio,
+          pj_sockaddr_print(&cand->addr, ipaddr,
+                            sizeof(ipaddr), 0),
+          (unsigned)pj_sockaddr_get_port(&cand->addr));
+
+    PRINT("<type>%s</type> </candidate> \n",
+          pj_ice_get_cand_type_name(cand->type));
+
+    if (p == buffer+maxlen)
+        return -PJ_ETOOSMALL;
+
+    *p = '\0';
+
+    return (int)(p-buffer);
+}
+
+
+
 /* 
  * Encode ICE information in SDP.
  */
-static int encode_session(struct ice_trans_s* icetrans,char buffer[], unsigned maxlen)
+
+static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsigned maxlen)
 {
     char *p = buffer;
     unsigned comp;
@@ -591,19 +643,38 @@ static int encode_session(struct ice_trans_s* icetrans,char buffer[], unsigned m
     pj_str_t local_ufrag, local_pwd;
     pj_status_t status;
 
+    //Me: add
+
+    PRINT(" <registerPeer>");
+    PRINT("<device> <uniqueId>%s</uniqueId> </device>", usrid);
+
+
+
     /* Write "dummy" SDP v=, o=, s=, and t= lines */
-    PRINT("v=0\no=- 3414953978 3414953978 IN IP4 localhost\ns=ice\nt=0 0\n");
+    // Me: comment
+    //PRINT("v=0\no=- 3414953978 3414953978 IN IP4 localhost\ns=ice\nt=0 0\n");
 
     /* Get ufrag and pwd from current session */
     pj_ice_strans_get_ufrag_pwd(icetrans->icest, &local_ufrag, &local_pwd,
                                 NULL, NULL);
 
+
     /* Write the a=ice-ufrag and a=ice-pwd attributes */
-    PRINT("a=ice-ufrag:%.*s\na=ice-pwd:%.*s\n",
+    // Me: comment
+    //PRINT("a=ice-ufrag:%.*s\na=ice-pwd:%.*s\n",
+    //      (int)local_ufrag.slen,
+    //      local_ufrag.ptr,
+    //      (int)local_pwd.slen,
+    //      local_pwd.ptr);
+
+    PRINT("<ufrag>%.*s</ufrag> <pwd>%.*s</pwd>",
           (int)local_ufrag.slen,
           local_ufrag.ptr,
           (int)local_pwd.slen,
           local_pwd.ptr);
+
+
+    PRINT(" <candidateList>");
 
     /* Write each component */
     for (comp=0; comp<icedemo.opt.comp_cnt; ++comp) {
@@ -619,23 +690,33 @@ static int encode_session(struct ice_trans_s* icetrans,char buffer[], unsigned m
         /* Write the default address */
         if (comp==0) {
             /* For component 1, default address is in m= and c= lines */
-            PRINT("m=audio %d RTP/AVP 0\n"
-                  "c=IN IP4 %s\n",
+            // Me: comment
+            // PRINT("m=audio %d RTP/AVP 0\n"
+            //      "c=IN IP4 %s\n",
+            //      (int)pj_sockaddr_get_port(&cand[0].addr),
+            //      pj_sockaddr_print(&cand[0].addr, ipaddr,
+            //                        sizeof(ipaddr), 0));
+
+            PRINT("<comp_1> <port>%d</port>"
+                  "<ip>%s</ip> </comp_1>",
                   (int)pj_sockaddr_get_port(&cand[0].addr),
                   pj_sockaddr_print(&cand[0].addr, ipaddr,
                                     sizeof(ipaddr), 0));
+
         } else if (comp==1) {
             /* For component 2, default address is in a=rtcp line */
-            PRINT("a=rtcp:%d IN IP4 %s\n",
-                  (int)pj_sockaddr_get_port(&cand[0].addr),
-                  pj_sockaddr_print(&cand[0].addr, ipaddr,
-                                    sizeof(ipaddr), 0));
+            //Me: comment
+            //PRINT("a=rtcp:%d IN IP4 %s\n",
+            //      (int)pj_sockaddr_get_port(&cand[0].addr),
+            //      pj_sockaddr_print(&cand[0].addr, ipaddr,
+            //                        sizeof(ipaddr), 0));
         } else {
             /* For other components, we'll just invent this.. */
-            PRINT("a=Xice-defcand:%d IN IP4 %s\n",
-                  (int)pj_sockaddr_get_port(&cand[0].addr),
-                  pj_sockaddr_print(&cand[0].addr, ipaddr,
-                                    sizeof(ipaddr), 0));
+            // Me: comment
+            //PRINT("a=Xice-defcand:%d IN IP4 %s\n",
+            //      (int)pj_sockaddr_get_port(&cand[0].addr),
+            //      pj_sockaddr_print(&cand[0].addr, ipaddr,
+            //                        sizeof(ipaddr), 0));
         }
 
         /* Enumerate all candidates for this component */
@@ -646,18 +727,28 @@ static int encode_session(struct ice_trans_s* icetrans,char buffer[], unsigned m
             return -status;
 
         /* And encode the candidates as SDP */
+        //const int buffer_xml_len = 2048;
+        //char buffer_xml[buffer_xml_len];
         for (j=0; j<cand_cnt; ++j) {
-            printed = print_cand(p, maxlen - (unsigned)(p-buffer), &cand[j]);
+            printed = print_cand_to_xml(p, maxlen - (unsigned)(p-buffer), &cand[j]);
             if (printed < 0)
                 return -PJ_ETOOSMALL;
+         //   printed = print_cand_to_xml(p, maxlen - (unsigned)(p-buffer), &cand[j]);
+         //   if (printed < 0)
+          //      return -PJ_ETOOSMALL;
             p += printed;
         }
     }
+    PRINT("</candidateList>");
+
+    PRINT(" </registerPeer>");
 
     if (p == buffer+maxlen)
         return -PJ_ETOOSMALL;
 
     *p = '\0';
+
+    //printf("DEBUGGGGGG: %s \n", (p - buffer);
     return (int)(p - buffer);
 }
 
@@ -669,9 +760,9 @@ static int encode_session(struct ice_trans_s* icetrans,char buffer[], unsigned m
 
 
 
-static void icedemo_show_ice(struct ice_trans_s* icetrans)
+static void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans)
 {
-    static char buffer[1000];
+    static char buffer[2048];
     int len;
 
     if (icetrans->icest == NULL) {
@@ -703,29 +794,31 @@ static void icedemo_show_ice(struct ice_trans_s* icetrans)
            pj_ice_strans_get_role(icetrans->icest)==PJ_ICE_SESS_ROLE_CONTROLLED ?
                "controlled" : "controlling");
 
-    len = encode_session(icetrans, buffer, sizeof(buffer));
+    len = extract_sdp_to_xml(icetrans, buffer, 2048);
     if (len < 0)
         err_exit("not enough buffer to show ICE status", -len);
 
+    // Register this local SDP to cloud
+    char full_url[256];
+    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
 
-    strcpy(sdp, buffer);
+    strcpy(full_url, gUrl); // plus URL
+    strcpy(&full_url[strlen(full_url)], "/peer/registerPeer"); // plus API
+    http_post_request(full_url, buffer);
 
-    puts("");
-    FILE* fd_sdp = fopen("sdp.txt", "w");
+
+
+
     printf("Local SDP (paste this to remote host):\n"
            "--------------------------------------\n"
            "%s\n", buffer);
-
-    if (fd_sdp)
-    {
-        printf("[Me][Debug] buffer len: %d \n buffer: %s \n", strlen(buffer), buffer);
-        fwrite(buffer, 1, strlen(buffer), fd_sdp);
-        fflush(fd_sdp);
-        fclose(fd_sdp);
-    }
+}
 
 
-
+static void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
+{
+    static char buffer[1000];
+    int len;
 
     puts("");
     puts("Remote info:\n"
@@ -756,7 +849,7 @@ static void icedemo_show_ice(struct ice_trans_s* icetrans)
 // Extract IP address along with its port of local address, flxadd, turn address
 // 2. Get peer from cloud
 
-static void icedemo_input_remote2(struct ice_trans_s* icetrans, const char *usr_id)
+static void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
 {
     char linebuf[80];
     unsigned media_cnt = 0;
@@ -770,111 +863,6 @@ static void icedemo_input_remote2(struct ice_trans_s* icetrans, const char *usr_
 
     comp0_addr[0] = '\0';
 
-    char file_path[256];
-    sprintf(file_path, "peer.%s", usr_id);
-
-    FILE *file = fopen(file_path, "r");
-
-    while (!done) {
-        pj_size_t len;
-        char *line;
-
-
-        if (fgets(linebuf, sizeof(linebuf), file)==NULL)
-            break;
-
-        if (strncmp(linebuf, "ACK:", 4) == 0)
-            continue;
-
-        len = strlen(linebuf);
-        while (len && (linebuf[len-1] == '\r' || linebuf[len-1] == '\n'))
-            linebuf[--len] = '\0';
-
-        line = linebuf;
-        while (len && pj_isspace(*line))
-            ++line, --len;
-
-        if (len==0)
-            break;
-
-        /* Ignore subsequent media descriptors */
-        if (media_cnt > 1)
-            continue;
-
-        switch (line[0]) {
-        case 'm':
-        {
-            int cnt;
-            char media[32], portstr[32];
-
-            ++media_cnt;
-            if (media_cnt > 1) {
-                puts("Media line ignored");
-                break;
-            }
-
-            cnt = sscanf(line+2, "%s %s RTP/", media, portstr);
-            if (cnt != 2) {
-                PJ_LOG(1,(THIS_FILE, "Error parsing media line"));
-                goto on_error;
-            }
-
-            comp0_port = atoi(portstr);
-
-        }
-            break;
-        case 'c':
-        {
-            int cnt;
-            char c[32], net[32], ip[80];
-
-            cnt = sscanf(line+2, "%s %s %s", c, net, ip);
-            if (cnt != 3) {
-                PJ_LOG(1,(THIS_FILE, "Error parsing connection line"));
-                goto on_error;
-            }
-
-            strcpy(comp0_addr, ip);
-        }
-            break;
-        case 'a':
-        {
-            char *attr = strtok(line+2, ": \t\r\n");
-            if (strcmp(attr, "ice-ufrag")==0) {
-                strcpy(icetrans->rem.ufrag, attr+strlen(attr)+1);
-            } else if (strcmp(attr, "ice-pwd")==0) {
-                strcpy(icetrans->rem.pwd, attr+strlen(attr)+1);
-            } else if (strcmp(attr, "rtcp")==0) {
-                char *val = attr+strlen(attr)+1;
-                int af, cnt;
-                int port;
-                char net[32], ip[64];
-                pj_str_t tmp_addr;
-                pj_status_t status;
-
-                cnt = sscanf(val, "%d IN %s %s", &port, net, ip);
-                if (cnt != 3) {
-                    PJ_LOG(1,(THIS_FILE, "Error parsing rtcp attribute"));
-                    goto on_error;
-                }
-
-                if (strchr(ip, ':'))
-                    af = pj_AF_INET6();
-                else
-                    af = pj_AF_INET();
-
-                pj_sockaddr_init(af, &icetrans->rem.def_addr[1], NULL, 0);
-                tmp_addr = pj_str(ip);
-                status = pj_sockaddr_set_str_addr(af, &icetrans->rem.def_addr[1],
-                                                  &tmp_addr);
-                if (status != PJ_SUCCESS) {
-                    PJ_LOG(1,(THIS_FILE, "Invalid IP address"));
-                    goto on_error;
-                }
-                pj_sockaddr_set_port(&icetrans->rem.def_addr[1], (pj_uint16_t)port);
-
-            } else if (strcmp(attr, "candidate")==0) {
-                char *sdpcand = attr+strlen(attr)+1;
                 int af, cnt;
                 char foundation[32], transport[12], ipaddr[80], type[32];
                 pj_str_t tmpaddr;
@@ -882,63 +870,130 @@ static void icedemo_input_remote2(struct ice_trans_s* icetrans, const char *usr_
                 pj_ice_sess_cand *cand;
                 pj_status_t status;
 
-                cnt = sscanf(sdpcand, "%s %d %s %d %s %d typ %s",
-                             foundation,
-                             &comp_id,
-                             transport,
-                             &prio,
-                             ipaddr,
-                             &port,
-                             type);
-                if (cnt != 7) {
-                    PJ_LOG(1, (THIS_FILE, "error: Invalid ICE candidate line"));
-                    goto on_error;
+                char full_url[1024];
+                char buff[1024];
+
+
+                strcpy(full_url, gUrl); // plus URL
+                sprintf(&full_url[strlen(full_url)], "/peer/getPeer/%s", usr_id); // plus API
+
+                printf("[Debug] URL: %s \n", full_url);
+
+                http_get_request(full_url, &buff[0]);
+                char *value;
+
+                xmlNode *cur_node = NULL;
+
+
+                xmlNode *a_node = xml_get_node_by_name(buff, "registerPeer");
+
+                value = (char *)xml_xmlnode_get_content_by_name(a_node->children, "ufrag");
+                strcpy(icetrans->rem.ufrag, value);
+                free(value);
+
+                value = (char *)xml_xmlnode_get_content_by_name(a_node->children, "pwd");
+                strcpy(icetrans->rem.pwd, value);
+                free(value);
+
+
+                a_node = xml_get_node_by_name(buff, "candidateList");
+
+
+                //printf("DEBUG %s, %d \n", __FILE__, __LINE__);
+
+                for (cur_node = a_node->children; cur_node; cur_node = cur_node->next) {
+                    printf("[DEBUG] %s \n", cur_node->name);
+
+                    if (cur_node->type == XML_ELEMENT_NODE)
+                    {
+                        {
+
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "foundation");
+                        strcpy(foundation, value);
+                        free(value);
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "comp_id");
+                        comp_id = atoi(value);
+                        free(value);
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "transport");
+                        strcpy(transport, value);
+                        free(value);
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "prio");
+                        prio = atoi(value);
+                        free(value);
+
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "ip");
+                        strcpy(ipaddr, value);
+                        if (cur_node == a_node->children)
+                            strcpy(comp0_addr, value);
+                        free(value);
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "port");
+                        port = atoi(value);
+                        if (cur_node == a_node->children)
+                            comp0_port = atoi(value);
+                        free(value);
+
+                        value = (char *)xml_xmlnode_get_content_by_name(cur_node, "type");
+                        strcpy(type, value);
+                        free(value);
+
+                        printf("DEBUG %s %d %s %d %s %d typ %s",
+                               foundation,
+                               comp_id,
+                               transport,
+                               prio,
+                               ipaddr,
+                               port,
+                               type);
+
+
+                        cand = &icetrans->rem.cand[icetrans->rem.cand_cnt];
+                        pj_bzero(cand, sizeof(*cand));
+
+                        if (strcmp(type, "host")==0)
+                            cand->type = PJ_ICE_CAND_TYPE_HOST;
+                        else if (strcmp(type, "srflx")==0)
+                            cand->type = PJ_ICE_CAND_TYPE_SRFLX;
+                        else if (strcmp(type, "relay")==0)
+                            cand->type = PJ_ICE_CAND_TYPE_RELAYED;
+                        else {
+                            PJ_LOG(1, (THIS_FILE, "Error: invalid candidate type '%s'",
+                                       type));
+                            goto on_error;
+                        }
+
+                        cand->comp_id = (pj_uint8_t)comp_id;
+                        pj_strdup2(icetrans->pool, &cand->foundation, foundation);
+                        cand->prio = prio;
+
+                        if (strchr(ipaddr, ':'))
+                            af = pj_AF_INET6();
+                        else
+                            af = pj_AF_INET();
+
+                        tmpaddr = pj_str(ipaddr);
+                        pj_sockaddr_init(af, &cand->addr, NULL, 0);
+                        status = pj_sockaddr_set_str_addr(af, &cand->addr, &tmpaddr);
+                        if (status != PJ_SUCCESS) {
+                            PJ_LOG(1,(THIS_FILE, "Error: invalid IP address '%s'",
+                                      ipaddr));
+                            goto on_error;
+                        }
+
+                        pj_sockaddr_set_port(&cand->addr, (pj_uint16_t)port);
+
+                        ++icetrans->rem.cand_cnt;
+
+                        if (cand->comp_id > icetrans->rem.comp_cnt)
+                            icetrans->rem.comp_cnt = cand->comp_id;
+                    }
                 }
-
-                cand = &icetrans->rem.cand[icetrans->rem.cand_cnt];
-                pj_bzero(cand, sizeof(*cand));
-
-                if (strcmp(type, "host")==0)
-                    cand->type = PJ_ICE_CAND_TYPE_HOST;
-                else if (strcmp(type, "srflx")==0)
-                    cand->type = PJ_ICE_CAND_TYPE_SRFLX;
-                else if (strcmp(type, "relay")==0)
-                    cand->type = PJ_ICE_CAND_TYPE_RELAYED;
-                else {
-                    PJ_LOG(1, (THIS_FILE, "Error: invalid candidate type '%s'",
-                               type));
-                    goto on_error;
                 }
-
-                cand->comp_id = (pj_uint8_t)comp_id;
-                pj_strdup2(icetrans->pool, &cand->foundation, foundation);
-                cand->prio = prio;
-
-                if (strchr(ipaddr, ':'))
-                    af = pj_AF_INET6();
-                else
-                    af = pj_AF_INET();
-
-                tmpaddr = pj_str(ipaddr);
-                pj_sockaddr_init(af, &cand->addr, NULL, 0);
-                status = pj_sockaddr_set_str_addr(af, &cand->addr, &tmpaddr);
-                if (status != PJ_SUCCESS) {
-                    PJ_LOG(1,(THIS_FILE, "Error: invalid IP address '%s'",
-                              ipaddr));
-                    goto on_error;
-                }
-
-                pj_sockaddr_set_port(&cand->addr, (pj_uint16_t)port);
-
-                ++icetrans->rem.cand_cnt;
-
-                if (cand->comp_id > icetrans->rem.comp_cnt)
-                    icetrans->rem.comp_cnt = cand->comp_id;
-            }
-        }
-            break;
-        }
-    }
 
     if (icetrans->rem.cand_cnt==0 ||
             icetrans->rem.ufrag[0]==0 ||
@@ -975,7 +1030,6 @@ static void icedemo_input_remote2(struct ice_trans_s* icetrans, const char *usr_
 
     PJ_LOG(3, (THIS_FILE, "Done, %d remote candidate(s) added",
                icetrans->rem.cand_cnt));
-    fclose(file);
 
     return;
 
@@ -1081,265 +1135,30 @@ static void icedemo_print_menu(void)
 
 }
 
+#ifdef MULTIPLE
 
-//// some functions related to singalling server 
-static int peer_put_dsp(char *my_id, char *_dsp)
-{
-    int sockfd, n;
-    struct sockaddr_in serv_addr;
-    struct hostent *server;
-
-    char buffer[1024];
-    /* Create a socket point */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sockfd < 0)
-    {
-        perror("ERROR opening socket");
-        exit(1);
-    }
-    server = gethostbyname(host_name);
-
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
-
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
-    serv_addr.sin_port = htons(portno);
-
-    /* Now connect to the server */
-    if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        perror("ERROR connecting");
-        exit(1);
-    }
-
-
-    bzero(buffer,1024);
-    sprintf(buffer, "PUT_%d_%s_%s\n", strlen(my_id) + strlen(_dsp) + 2, my_id, _dsp);
-    //fgets(buffer,255,stdin);
-    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    /* Send message to the server */
-    n = write(sockfd, buffer, strlen(buffer));
-
-    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    if (n < 0)
-    {
-        perror("ERROR writing to socket");
-        exit(1);
-    }
-    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    //usleep(50*1000*1000);
-
-    /* Now read server response */
-    bzero(buffer,1024);
-    n = read(sockfd, buffer, 1024);
-    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    hexDump(NULL, buffer, n);
-
-
-    close(sockfd);
-
-}
-
-
-static int peer_get_dsps()
-{
-    int sockfd, n;
-    struct sockaddr_in serv_addr;
-    struct hostent *server;
-
-    //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    char buffer[1024];
-    /* Create a socket point */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sockfd < 0)
-    {
-        perror("ERROR opening socket");
-        exit(1);
-    }
-
-    //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-    server = gethostbyname(host_name);
-
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
-
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
-    serv_addr.sin_port = htons(portno);
-
-
-    /* Now connect to the server */
-    if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        perror("ERROR connecting");
-        exit(1);
-    }
-
-
-
-    char arg1[256];
-    char arg2[256];
-
-    strcpy(arg1, "all");
-    strcpy(arg2, "none");
-
-
-    bzero(buffer,1024);
-    sprintf(buffer, "GETALL_%d_%s_%s\n", strlen(arg1) + strlen(arg2) + 2, arg1, arg2);
-    n = write(sockfd, buffer, strlen(buffer));
-
-
-    if (n < 0)
-    {
-        perror("ERROR writing to socket");
-        exit(1);
-    }
-
-    //usleep(50*1000*1000);
-
-    /* Now read server response */
-    bzero(buffer,1024);
-    n = read(sockfd, buffer, 1024);
-
-    char usr[256];
-
-    FILE *file = fopen("list_peer.txt", "w+");
-    fwrite(buffer, 1, strlen(buffer), file);
-    fflush(file);
-
-
-    fseek(file, 0, SEEK_SET);
-
-    while (fgets(usr, 256, file) != NULL)
-    {
-        if (strncmp(usr, "USER=", 5) == 0)
-            printf("%s", usr);
-    }
-
-    if (file != NULL)
-        fclose(file);
-
-    close(sockfd);
-
-}
-
-
-static int peer_get_dsp(const char *usr_id, char *dsp)
-{
-    int sockfd, n;
-    struct sockaddr_in serv_addr;
-    struct hostent *server;
-
-    //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    char buffer[1024];
-    /* Create a socket point */
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
-
-    if (sockfd < 0)
-    {
-        perror("ERROR opening socket");
-        exit(1);
-    }
-
-    //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-    server = gethostbyname(host_name);
-
-    if (server == NULL) {
-        fprintf(stderr,"ERROR, no such host\n");
-        exit(0);
-    }
-
-    bzero((char *) &serv_addr, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
-    serv_addr.sin_port = htons(portno);
-
-
-    /* Now connect to the server */
-    if (connect(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        perror("ERROR connecting");
-        exit(1);
-    }
-
-
-    bzero(buffer,1024);
-    sprintf(buffer, "GET_%d_%s_%s\n", strlen(usr_id) + strlen("None") + 2, usr_id, "None");
-    n = write(sockfd, buffer, strlen(buffer));
-
-
-    if (n < 0)
-    {
-        perror("ERROR writing to socket");
-        exit(1);
-    }
-
-    //usleep(50*1000*1000);
-
-    /* Now read server response */
-    bzero(buffer,1024);
-    n = read(sockfd, buffer, 1024);
-
-    char usr[256];
-
-    char file_path[256];
-    sprintf(file_path, "peer.%s", usr_id);
-
-    FILE *file = fopen(file_path, "w+");
-    fwrite(buffer, 1, strlen(buffer), file);
-    fflush(file);
-
-    fseek(file, 0, SEEK_SET);
-
-    while (fgets(usr, 256, file) != NULL)
-    {
-        if (strncmp(usr, "ACK=", 5) != 0)
-            strcpy(sdp, usr);
-    }
-
-    if (file != NULL)
-        fclose(file);
-
-    close(sockfd);
-    return 0;
-}
-
-
-static struct ice_trans_s* get_ice_tran_from_name(char *name)
+static int get_ice_tran_from_name(char *name)
 {
     int i;
     for (i = 0; i < MAX_ICE_TRANS; i++)
         if (strcmp(name, icedemo.ice_trans_list[i].name) == 0)
-            return &icedemo.ice_trans_list[i];
-    return NULL;
+            return i;
+    return i;
 }
+
+#endif
 
 
 /*
  * Main console loop.
  */
 
-char gUrl[] = "http://115.77.49.188:5001";
-
 enum COMMAND_IDX {
     CMD_HOME_GET = 0,
     CMD_DEVICE_GET,
     CMD_DEVICE_REGISTER,
+    CMD_PEER_CONNECT,
+    CMD_PEER_SEND,
     CMD_EXIT,
     CMD_MAX
 };
@@ -1398,9 +1217,9 @@ static int api_home_get(void* arg)
 
     strcpy(full_url, gUrl); // plus URL
     strcpy(&full_url[strlen(full_url)], "/device/getDevicesFromNetwork/"); // plus API
-    sprintf(&full_url[strlen(full_url)], "%s", arg); // plus agrument
+    sprintf(&full_url[strlen(full_url)], "%s", (char *)arg); // plus agrument
     //printf("[DEBUG] API: %s \n", full_url);
-    http_get_request(full_url, &buff);
+    http_get_request(full_url, buff);
 
     xmlNode *device = xml_get_node_by_name(buff, "DeviceList");
     xmlNode *cur_node;
@@ -1425,10 +1244,10 @@ static int api_device_get(void* arg)
 
     strcpy(full_url, gUrl);
     strcpy(&full_url[strlen(full_url)], "/device/getDevice/");
-    sprintf(&full_url[strlen(full_url)], "%s", arg);
+    sprintf(&full_url[strlen(full_url)], "%s", (char*)arg);
     //printf("[DEBUG] API: %s \n", full_url);
 
-    http_get_request(full_url, &buff);
+    http_get_request(full_url, buff);
     //printf("DEBUG recieved buffer: \n %s \n", buff);
     // TODO: fine-tuning the result by using libxml
     char *value = xml_get_content_by_name(buff, "uniqueId");
@@ -1441,18 +1260,87 @@ static int api_device_get(void* arg)
 
 }
 
-int cmd_more(void* arg);
+static int api_peer_connect(void *arg)
+{
+
+    int index;
+#ifdef MULTIPLE
+    index = get_ice_tran_from_name(arg);
+
+    if (index < MAX_ICE_TRANS)
+    {
+
+        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
+        // re-initialize
+        ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
+        icedemo_connect_with_user(ice_trans, arg);
+        icedemo_start_nego(ice_trans);
+    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
+        // re-initialize
+
+        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
+        ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
+        strcpy(ice_trans->name, arg);
+        icedemo_connect_with_user(ice_trans, arg);
+        icedemo_start_nego(ice_trans);
+    }else
+          return -1;
+#else
+    ice_trans_t *ice_trans = &icedemo.ice_receive;
+    strcpy(ice_trans->name, arg);
+    icedemo_connect_with_user(ice_trans, arg);
+    icedemo_start_nego(ice_trans);
+
+#endif
+    return 0;
+}
+
+
+typedef struct _MSG_S{
+    char username[256];
+    char msg[256];
+}MSG_T;
+
+static int api_peer_send(void *arg)
+{
+    MSG_T *msg = (MSG_T *)arg;
+
+#ifdef MULTIPLE
+    int index = get_ice_tran_from_name(msg->username);
+
+    if (index < MAX_ICE_TRANS)
+    {
+
+        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
+        // TODO: Send to a particular user
+        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
+    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
+
+        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
+        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
+    }else
+        return -1;
+#else
+      icedemo_send_data(&icedemo.ice_receive, 1, msg->msg);
+#endif
+    return 0;
+}
+
+
 
 cmd_handler_t cmd_list[CMD_MAX] = {
     {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
     {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
     {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
+    {.cmd_idx = CMD_PEER_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
+    {.cmd_idx = CMD_PEER_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
 
 void cmd_print_help()
 {
     int i = 0;
+    printf("\n\n===============%s=======================\n", usrid);
     for (i = 0; i < CMD_MAX; i++)
         printf("%d: \t %s \n", cmd_list[i].cmd_idx, cmd_list[i].help);
 }
@@ -1476,26 +1364,37 @@ int is_valid_int(const char *str)
 }
 
 
+
+
 static void icedemo_console(void)
 {
     pj_bool_t app_quit = PJ_FALSE;
 
-    // TODO: iterate
-    int i;
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-    {
-        struct ice_trans_s* icetrans = &icedemo.ice_trans_list[i];
+    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
 
+    struct ice_trans_s* icetrans = &icedemo.ice_receive;
+
+    strcpy(icetrans->name, usrid);
+    icedemo_create_instance(icetrans);
+
+    usleep(1*1000*1000);
+    icedemo_init_session(icetrans, 'o');
+    usleep(4*1000*1000);
+    get_and_register_SDP_to_cloud(icetrans);
+
+
+       int i;
+#ifdef MULTIPLE
+       for (i = 0; i < MAX_ICE_TRANS; i++)
+    {
+        icetrans = &icedemo.ice_trans_list[i];
         icedemo_create_instance(icetrans);
         usleep(1*1000*1000);
-        icedemo_init_session(icetrans, "o");
-
-        usleep(1*1000*1000);
-        icedemo_show_ice(icetrans);
-
+        icedemo_init_session(icetrans, 'o');
+        strcpy(icetrans->name, "");
     }
+#endif
 
-#if 1
     char cmd[256];
     memset(cmd, 0, 256);
     while (printf(">>>") && gets(&cmd[0]) != NULL)
@@ -1516,6 +1415,22 @@ static void icedemo_console(void)
            case CMD_DEVICE_REGISTER:
                 cmd_list[idx].cmd_func("registerDevice");
                 break;
+            case CMD_PEER_CONNECT:
+                printf("which user: ");
+                char user[256];
+                gets(user);
+                if (strlen(user) > 2)
+                    api_peer_connect(user);
+                break;
+            case CMD_PEER_SEND:
+            {
+                MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
+                printf("[MSG]: ");
+                gets(msg->msg);
+                if (strlen(msg->msg) > 1)
+                    cmd_list[idx].cmd_func(msg);
+                break;
+            }
             case CMD_EXIT:
                 printf("BYE BYE :-*, :-*\n");
                 exit(0);
@@ -1528,72 +1443,7 @@ static void icedemo_console(void)
 
         memset(cmd, 0, 256);
     }
-#else
 
-
-    peer_put_dsp(usrid, sdp);
-    while (!app_quit) {
-        char input[80], *cmd;
-        const char *SEP = " \t\r\n";
-        pj_size_t len;
-
-        icedemo_print_menu();
-
-        printf("Input: ");
-        if (stdout) fflush(stdout);
-
-        pj_bzero(input, sizeof(input));
-        if (fgets(input, sizeof(input), stdin) == NULL)
-            break;
-
-        len = strlen(input);
-        while (len && (input[len-1]=='\r' || input[len-1]=='\n'))
-            input[--len] = '\0';
-
-        cmd = strtok(input, SEP);
-        if (!cmd)
-            continue;
-
-        if (strcmp(cmd, "list") == 0 || strcmp(cmd, "l")==0){
-
-            peer_get_dsps();
-
-        }else if (strcmp(cmd, "start")==0 || strcmp(cmd, "s") == 0)
-        {
-
-            printf("Which user: ");
-            char _usr_id[256];
-            char _usr_sdp[1024];
-
-
-            gets(_usr_id);
-
-            peer_get_dsp(_usr_id, _usr_sdp);
-
-            // ADD:
-            struct ice_trans_s *ice_tran =  get_ice_tran_from_name(_usr_id);
-            // start conversation with an user
-            // TODO: Get SDP from cloud
-            icedemo_input_remote2(ice_tran, _usr_id);
-            icedemo_start_nego(ice_tran);
-
-            char msg[256];
-            do{
-                printf("enter your message (quit to exit) ");
-                gets(msg);
-                if (strcmp(msg, "quit") == 0)
-                    break;
-                icedemo_send_data(ice_tran, 1, msg);
-
-            } while(1);
-
-
-            // start conversation
-
-        }
-
-    }
-#endif
 
 }
 
@@ -1631,6 +1481,8 @@ static void icedemo_usage()
     puts(" --usrid, -U usrid    user id ");
     puts(" --signalling, -S    Signalling server");
     puts(" --signalling-port, -P    Use fingerprint for outgoing TURN requests");
+
+    puts("Device specific option:");
     puts("");
 }
 
@@ -1664,6 +1516,8 @@ int main(int argc, char *argv[])
     { "userid",   1, 0, 'U'},
     { "singalling",   1, 0, 'S'},
     { "singalling-port",   1, 0, 'P'},
+
+
 };
     int c, opt_id;
 

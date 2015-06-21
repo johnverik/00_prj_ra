@@ -84,6 +84,17 @@ char *xml_get_content_by_name(char *xmlbuff, char *name) {
 }
 
 
+char *xml_xmlnode_get_content_by_name(xmlNode *xml_node, char *xml_e)
+{
+    xmlNode *node = _searching_element_by_name(xml_node, xml_e);
+    if (node == NULL)
+          return NULL;
+    char *xml_content = (char *)xmlNodeGetContent(node);
+    return xml_content;
+
+}
+
+// fixme: free memory
 xmlNode* xml_get_node_by_name(char *xmlbuff, char *name)
 {
 
@@ -97,7 +108,8 @@ xmlNode* xml_get_node_by_name(char *xmlbuff, char *name)
     }
 
     return _searching_element_by_name(xmldoc->children, name);
-    }
+
+}
 
 
 #ifdef BUILD_XMLWRAPPER
