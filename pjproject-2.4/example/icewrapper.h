@@ -10,12 +10,11 @@
  */
 #define KA_INTERVAL 300
 
-#ifdef MULTIPLE
+#define MULTIPLE 1
 
 
-#define MAX_ICE_TRANS 1
+#define MAX_ICE_TRANS 3
 
-#endif
 
 typedef struct ice_trans_s{
 
@@ -68,10 +67,7 @@ struct app_t
         const char *log_file;
     } opt;
 
-    ice_trans_t ice_receive;
-#ifdef MULTIPLE
     ice_trans_t ice_trans_list[MAX_ICE_TRANS];
-#endif
 
 } ;
 

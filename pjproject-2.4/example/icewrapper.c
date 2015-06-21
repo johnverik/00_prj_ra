@@ -52,12 +52,11 @@ static void err_exit( const char *title, pj_status_t status)
 {
 
     int i;
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
-#ifdef MULTIPLE
+    struct ice_trans_s* icetrans;
+
     for (i = 0; i < MAX_ICE_TRANS; i++)
     {
         icetrans = &icedemo.ice_trans_list[i];
-#endif
         if (status != PJ_SUCCESS) {
             icedemo_perror(title, status);
         }
@@ -88,9 +87,7 @@ static void err_exit( const char *title, pj_status_t status)
             fclose(icetrans->log_fhnd);
             icetrans->log_fhnd = NULL;
         }
-#ifdef MULTIPLE
     }
-#endif
     exit(status != PJ_SUCCESS);
 
 }
@@ -315,19 +312,12 @@ static pj_status_t icedemo_init(void)
     CHECK( pjnath_init() );
 
     /* Must create pool factory, where memory allocations come from */
-#ifdef MULTIPLE
     int i;
-    for (i = 0; i <= MAX_ICE_TRANS; i++)
+    for (i = 0; i < MAX_ICE_TRANS; i++)
     {
 
         struct ice_trans_s* icetrans;
-        if (i < MAX_ICE_TRANS)
             icetrans  = &icedemo.ice_trans_list[i];
-        else
-            icetrans = &icedemo.ice_receive;
-#else
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
-#endif
         if (icedemo.opt.log_file) {
             icetrans->log_fhnd = fopen(icedemo.opt.log_file, "a");
             pj_log_set_log_func(&log_func);
@@ -441,9 +431,7 @@ static pj_status_t icedemo_init(void)
      */
             icetrans->ice_cfg.turn.alloc_param.ka_interval = KA_INTERVAL;
         }
-        #ifdef MULTIPLE
     }
-#endif
 
     /* -= That's it for now, initialization is complete =- */
     return PJ_SUCCESS;
@@ -1135,7 +1123,6 @@ static void icedemo_print_menu(void)
 
 }
 
-#ifdef MULTIPLE
 
 static int get_ice_tran_from_name(char *name)
 {
@@ -1145,8 +1132,6 @@ static int get_ice_tran_from_name(char *name)
             return i;
     return i;
 }
-
-#endif
 
 
 /*
@@ -1264,7 +1249,6 @@ static int api_peer_connect(void *arg)
 {
 
     int index;
-#ifdef MULTIPLE
     index = get_ice_tran_from_name(arg);
 
     if (index < MAX_ICE_TRANS)
@@ -1285,13 +1269,7 @@ static int api_peer_connect(void *arg)
         icedemo_start_nego(ice_trans);
     }else
           return -1;
-#else
-    ice_trans_t *ice_trans = &icedemo.ice_receive;
-    strcpy(ice_trans->name, arg);
-    icedemo_connect_with_user(ice_trans, arg);
-    icedemo_start_nego(ice_trans);
 
-#endif
     return 0;
 }
 
@@ -1305,7 +1283,7 @@ static int api_peer_send(void *arg)
 {
     MSG_T *msg = (MSG_T *)arg;
 
-#ifdef MULTIPLE
+
     int index = get_ice_tran_from_name(msg->username);
 
     if (index < MAX_ICE_TRANS)
@@ -1320,9 +1298,6 @@ static int api_peer_send(void *arg)
         icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
     }else
         return -1;
-#else
-      icedemo_send_data(&icedemo.ice_receive, 1, msg->msg);
-#endif
     return 0;
 }
 
@@ -1372,28 +1347,23 @@ static void icedemo_console(void)
 
     printf("[Debug] %s, %d \n", __FILE__, __LINE__);
 
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
-
-    strcpy(icetrans->name, usrid);
-    icedemo_create_instance(icetrans);
-
-    usleep(1*1000*1000);
-    icedemo_init_session(icetrans, 'o');
-    usleep(4*1000*1000);
-    get_and_register_SDP_to_cloud(icetrans);
-
+    struct ice_trans_s* icetrans;
 
        int i;
-#ifdef MULTIPLE
+
        for (i = 0; i < MAX_ICE_TRANS; i++)
     {
         icetrans = &icedemo.ice_trans_list[i];
         icedemo_create_instance(icetrans);
         usleep(1*1000*1000);
         icedemo_init_session(icetrans, 'o');
+        usleep(4*1000*1000);
         strcpy(icetrans->name, "");
+
+        if (i == 0)
+            get_and_register_SDP_to_cloud(icetrans);
     }
-#endif
+
 
     char cmd[256];
     memset(cmd, 0, 256);
@@ -1425,6 +1395,11 @@ static void icedemo_console(void)
             case CMD_PEER_SEND:
             {
                 MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
+                printf("[USR]: ");
+                gets(msg->username);
+                if (strlen(msg->username) < 3)
+                    break;
+
                 printf("[MSG]: ");
                 gets(msg->msg);
                 if (strlen(msg->msg) > 1)
