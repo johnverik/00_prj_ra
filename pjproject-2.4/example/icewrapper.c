@@ -37,7 +37,7 @@ struct app_t icedemo;
 
 
 /* Utility to display error messages */
-static void icedemo_perror(const char *title, pj_status_t status)
+static void ice_perror(const char *title, pj_status_t status)
 {
     char errmsg[PJ_ERR_MSG_SIZE];
 
@@ -58,7 +58,7 @@ static void err_exit( const char *title, pj_status_t status)
     {
         icetrans = &icedemo.ice_trans_list[i];
         if (status != PJ_SUCCESS) {
-            icedemo_perror(title, status);
+            ice_perror(title, status);
         }
         PJ_LOG(3,(THIS_FILE, "Shutting down.."));
 
@@ -167,7 +167,7 @@ static pj_status_t handle_events(struct ice_trans_s* icetrans, unsigned max_msec
 /*
  * This is the worker thread that polls event in the background.
  */
-static int icedemo_worker_thread( void *unused)
+static int ice_worker_thread( void *unused)
 {
     PJ_UNUSED_ARG(unused);
 
@@ -243,8 +243,8 @@ static void cb_on_rx_data(pj_ice_strans *ice_st,
     PJ_UNUSED_ARG(src_addr_len);
     PJ_UNUSED_ARG(pkt);
 
-    // Don't do this! It will ruin the packet buffer in case TCP is used!
-    //((char*)pkt)[size] = '\0';
+    // warning:
+    ((char*)pkt)[size] = '\0';
 
     PJ_LOG(3,(THIS_FILE, "Component %d: received %d bytes data from %s: \"%.*s\"",
               comp_id, size,
@@ -252,8 +252,10 @@ static void cb_on_rx_data(pj_ice_strans *ice_st,
               (unsigned)size,
               (char*)pkt));
 
-    // TODO: how to know which session this RX belongs to
+    printf("\n=======MSG is incomming =============\n");
     hexDump(NULL, pkt, size);
+    printf("=======================================\n");
+
 
 
 }
@@ -299,9 +301,9 @@ static void log_func(struct ice_trans_s* icetrans,  int level, const char *data,
  * once (and only once) during application initialization sequence by
  * main().
  */
-// Note: this icedemo_init is called just one time
+// Note: this ice_init is called just one time
 
-static pj_status_t icedemo_init(void)
+static pj_status_t ice_init(void)
 {
     pj_status_t status;
 
@@ -347,7 +349,7 @@ static pj_status_t icedemo_init(void)
      * unless we're on Symbian where the timer heap and ioqueue run
      * on themselves.
      */
-        CHECK( pj_thread_create(icetrans->pool, "icedemo", &icedemo_worker_thread,
+        CHECK( pj_thread_create(icetrans->pool, "icedemo", &ice_worker_thread,
                                 icetrans, 0, 0, &icetrans->thread) );
 
         icetrans->ice_cfg.af = pj_AF_INET();
@@ -441,7 +443,7 @@ static pj_status_t icedemo_init(void)
 /*
  * Create ICE stream transport instance, invoked from the menu.
  */
-static void icedemo_create_instance(struct ice_trans_s* icetrans)
+static void ice_create_instance(struct ice_trans_s* icetrans)
 {
     pj_ice_strans_cb icecb;
     pj_status_t status;
@@ -467,7 +469,7 @@ static void icedemo_create_instance(struct ice_trans_s* icetrans)
                                   &icetrans->icest)		    /* instance ptr */
             ;
     if (status != PJ_SUCCESS)
-        icedemo_perror("error creating ice", status);
+        ice_perror("error creating ice", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE instance successfully created"));
 }
@@ -482,7 +484,7 @@ static void reset_rem_info(struct ice_trans_s* icetrans)
 /*
  * Destroy ICE stream transport instance, invoked from the menu.
  */
-static void icedemo_destroy_instance(struct ice_trans_s* icetrans)
+static void ice_destroy_instance(struct ice_trans_s* icetrans)
 {
     if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
@@ -501,7 +503,7 @@ static void icedemo_destroy_instance(struct ice_trans_s* icetrans)
 /*
  * Create ICE session, invoked from the menu.
  */
-static void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
+static void ice_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
 {
     pj_ice_sess_role role = (pj_tolower((pj_uint8_t)rolechar)=='o' ?
                                  PJ_ICE_SESS_ROLE_CONTROLLING :
@@ -520,7 +522,7 @@ static void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar
 
     status = pj_ice_strans_init_ice(icetrans->icest, role, NULL, NULL);
     if (status != PJ_SUCCESS)
-        icedemo_perror("error creating session", status);
+        ice_perror("error creating session", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE session created"));
 
@@ -531,7 +533,7 @@ static void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar
 /*
  * Stop/destroy ICE session, invoked from the menu.
  */
-static void icedemo_stop_session(struct ice_trans_s* icetrans)
+static void ice_stop_session(struct ice_trans_s* icetrans)
 {
     pj_status_t status;
 
@@ -547,7 +549,7 @@ static void icedemo_stop_session(struct ice_trans_s* icetrans)
 
     status = pj_ice_strans_stop_ice(icetrans->icest);
     if (status != PJ_SUCCESS)
-        icedemo_perror("error stopping session", status);
+        ice_perror("error stopping session", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE session stopped"));
 
@@ -561,34 +563,6 @@ static void icedemo_stop_session(struct ice_trans_s* icetrans)
     return -PJ_ETOOSMALL; \
     p += printed
 
-
-/* Utility to create a=candidate SDP attribute */
-static int print_cand(char buffer[], unsigned maxlen,
-                      const pj_ice_sess_cand *cand)
-{
-    char ipaddr[PJ_INET6_ADDRSTRLEN];
-    char *p = buffer;
-    int printed;
-
-    PRINT("a=candidate:%.*s %u UDP %u %s %u typ ",
-          (int)cand->foundation.slen,
-          cand->foundation.ptr,
-          (unsigned)cand->comp_id,
-          cand->prio,
-          pj_sockaddr_print(&cand->addr, ipaddr,
-                            sizeof(ipaddr), 0),
-          (unsigned)pj_sockaddr_get_port(&cand->addr));
-
-    PRINT("%s\n",
-          pj_ice_get_cand_type_name(cand->type));
-
-    if (p == buffer+maxlen)
-        return -PJ_ETOOSMALL;
-
-    *p = '\0';
-
-    return (int)(p-buffer);
-}
 
 static int print_cand_to_xml(char buffer[], unsigned maxlen,
                       const pj_ice_sess_cand *cand)
@@ -619,9 +593,6 @@ static int print_cand_to_xml(char buffer[], unsigned maxlen,
 
 
 
-/* 
- * Encode ICE information in SDP.
- */
 
 static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsigned maxlen)
 {
@@ -741,12 +712,6 @@ static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsign
 }
 
 
-/*
- * Show information contained in the ICE stream transport. This is
- * invoked from the menu.
- */
-
-
 
 static void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans)
 {
@@ -821,7 +786,7 @@ static void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
         printf("Remote cand. cnt.  : %d\n", icetrans->rem.cand_cnt);
 
         for (i=0; i<icetrans->rem.cand_cnt; ++i) {
-            len = print_cand(buffer, sizeof(buffer), &icetrans->rem.cand[i]);
+            len = print_cand_to_xml(buffer, sizeof(buffer), &icetrans->rem.cand[i]);
             if (len < 0)
                 err_exit("not enough buffer to show ICE status", -len);
 
@@ -830,14 +795,7 @@ static void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
     }
 }
 
-
-// TODO:
-// 1. Register the peer to cloud
-// How to get peer information
-// Extract IP address along with its port of local address, flxadd, turn address
-// 2. Get peer from cloud
-
-static void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
+static void ice_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
 {
     char linebuf[80];
     unsigned media_cnt = 0;
@@ -1027,9 +985,11 @@ on_error:
 
 
 /*
- * Start ICE negotiation! This function is invoked from the menu.
+ * Start ICE negotiation!
  */
-static void icedemo_start_nego(struct ice_trans_s* icetrans)
+
+
+static void ice_start_nego(struct ice_trans_s* icetrans)
 {
     pj_str_t rufrag, rpwd;
     pj_status_t status;
@@ -1057,7 +1017,7 @@ static void icedemo_start_nego(struct ice_trans_s* icetrans)
                                      icetrans->rem.cand_cnt,
                                      icetrans->rem.cand);
     if (status != PJ_SUCCESS)
-        icedemo_perror("Error starting ICE", status);
+        ice_perror("Error starting ICE", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE negotiation started"));
 }
@@ -1066,7 +1026,7 @@ static void icedemo_start_nego(struct ice_trans_s* icetrans)
 /*
  * Send application data to remote agent.
  */
-static void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
+static void ice_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
 {
     pj_status_t status;
 
@@ -1096,32 +1056,13 @@ static void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, co
                                   &icetrans->rem.def_addr[comp_id-1],
                                   pj_sockaddr_get_len(&icetrans->rem.def_addr[comp_id-1]));
     if (status != PJ_SUCCESS)
-        icedemo_perror("Error sending data", status);
+        ice_perror("Error sending data", status);
     else
         PJ_LOG(3,(THIS_FILE, "Data sent"));
 }
 
 
 
-
-/*
- * Display console menu
- */
-static void icedemo_print_menu(void)
-{
-
-    puts("");
-    puts("+----------------------------------------------------------------------+");
-    puts("|                    M E N U                                           |");
-    puts("+---+------------------------------------------------------------------+");
-    puts("| l | list           List all user id                                |");
-    puts("| s | start          start conversation with an userid                            |");
-    puts("+---+------------------------------------------------------------------+");
-    puts("| h |  help            * Help! *                                       |");
-    puts("| q |  quit            Quit                                            |");
-    puts("+----------------------------------------------------------------------+");
-
-}
 
 
 static int get_ice_tran_from_name(char *name)
@@ -1144,6 +1085,7 @@ enum COMMAND_IDX {
     CMD_DEVICE_REGISTER,
     CMD_PEER_CONNECT,
     CMD_PEER_SEND,
+    CMD_SET_LOG_LV,
     CMD_EXIT,
     CMD_MAX
 };
@@ -1160,11 +1102,13 @@ typedef struct cmd_handler_s{
 static int api_device_register(void *arg)
 {
 
-    char register_device[] = "<?xml version=\"1.0\"?> \
+    char register_device[1024];
+
+    sprintf(register_device, "<?xml version=\"1.0\"?> \
     <deviceRegister> \
     <device> \
     <deviceId/> \
-    <uniqueId>Mydevice1</uniqueId> \
+    <uniqueId>%s</uniqueId> \
     <modelCode>Sensor</modelCode> \
     <home> \
     <description>Test Home</description> \
@@ -1177,7 +1121,7 @@ static int api_device_register(void *arg)
     <description>smart phone</description> \
     <uniqueId>unq_2305130636</uniqueId> \
     </smartDevice> \
-            </deviceRegister>";
+            </deviceRegister>", arg);
 
     char full_url[256];
     char *buff;
@@ -1196,7 +1140,7 @@ static int api_device_register(void *arg)
 static int api_home_get(void* arg)
 {
     char full_url[256];
-    char *buff;
+    char buff[1024];
 
     //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
 
@@ -1205,6 +1149,8 @@ static int api_home_get(void* arg)
     sprintf(&full_url[strlen(full_url)], "%s", (char *)arg); // plus agrument
     //printf("[DEBUG] API: %s \n", full_url);
     http_get_request(full_url, buff);
+
+    //printf("[DEBUG] %s, %d buffer: %s \n", __FILE__, __LINE__, buff);
 
     xmlNode *device = xml_get_node_by_name(buff, "DeviceList");
     xmlNode *cur_node;
@@ -1218,14 +1164,13 @@ static int api_home_get(void* arg)
     }
 
 
-    free(buff);
     return 0;
 }
 
 static int api_device_get(void* arg)
 {
     char full_url[256];
-    char *buff;
+    char buff[1024];
 
     strcpy(full_url, gUrl);
     strcpy(&full_url[strlen(full_url)], "/device/getDevice/");
@@ -1240,7 +1185,6 @@ static int api_device_get(void* arg)
     printf("\t Device ID: %s \n", value);
     printf("=============================\n");
     free(value);
-    free(buff);
     return 0;
 
 }
@@ -1257,16 +1201,16 @@ static int api_peer_connect(void *arg)
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         // re-initialize
         ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
-        icedemo_connect_with_user(ice_trans, arg);
-        icedemo_start_nego(ice_trans);
+        ice_connect_with_user(ice_trans, arg);
+        ice_start_nego(ice_trans);
     }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
         // re-initialize
 
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
         strcpy(ice_trans->name, arg);
-        icedemo_connect_with_user(ice_trans, arg);
-        icedemo_start_nego(ice_trans);
+        ice_connect_with_user(ice_trans, arg);
+        ice_start_nego(ice_trans);
     }else
           return -1;
 
@@ -1291,26 +1235,34 @@ static int api_peer_send(void *arg)
 
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         // TODO: Send to a particular user
-        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
+        ice_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
     }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
 
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
+        ice_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
     }else
         return -1;
     return 0;
 }
 
+static int api_set_log_level(void *arg)
+{
+    int *pointer = (int *)arg;
+    int level = *pointer;
 
+    pj_log_set_level(level);
+}
 
 cmd_handler_t cmd_list[CMD_MAX] = {
-    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
-    {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
-    {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
+    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork (networkID1)", .cmd_func = api_home_get},
+    {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device (not yet supported)", .cmd_func = api_device_get },
+    {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud ", .cmd_func = api_device_register },
     {.cmd_idx = CMD_PEER_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
     {.cmd_idx = CMD_PEER_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
+    {.cmd_idx = CMD_SET_LOG_LV, .help = "Set Log level", .cmd_func = api_set_log_level},
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
+
 
 void cmd_print_help()
 {
@@ -1322,7 +1274,7 @@ void cmd_print_help()
 
 
 
-int is_valid_int(const char *str)
+static int is_valid_int(const char *str)
 {
     //
     if (!*str)
@@ -1341,7 +1293,7 @@ int is_valid_int(const char *str)
 
 
 
-static void icedemo_console(void)
+static void ice_console(void)
 {
     pj_bool_t app_quit = PJ_FALSE;
 
@@ -1354,10 +1306,10 @@ static void icedemo_console(void)
        for (i = 0; i < MAX_ICE_TRANS; i++)
     {
         icetrans = &icedemo.ice_trans_list[i];
-        icedemo_create_instance(icetrans);
+        ice_create_instance(icetrans);
         usleep(1*1000*1000);
-        icedemo_init_session(icetrans, 'o');
-        usleep(4*1000*1000);
+        ice_init_session(icetrans, 'o');
+        usleep(3*1000*1000);
         strcpy(icetrans->name, "");
 
         if (i == 0)
@@ -1373,6 +1325,7 @@ static void icedemo_console(void)
         if (is_valid_int(cmd))
         {
             int idx = atoi(cmd);
+            int log_level = 2;
         //printf("[DEBUG] command index : %d \n", idx );
             switch (idx)
             {
@@ -1383,7 +1336,7 @@ static void icedemo_console(void)
                 cmd_list[idx].cmd_func("device1");
                 break;
            case CMD_DEVICE_REGISTER:
-                cmd_list[idx].cmd_func("registerDevice");
+                cmd_list[idx].cmd_func(usrid);
                 break;
             case CMD_PEER_CONNECT:
                 printf("which user: ");
@@ -1406,6 +1359,12 @@ static void icedemo_console(void)
                     cmd_list[idx].cmd_func(msg);
                 break;
             }
+            case CMD_SET_LOG_LV:
+                printf("Which log level (1-5): default 2:  ");
+                scanf("%d", &log_level);
+                cmd_list[idx].cmd_func(&log_level);
+
+                break;
             case CMD_EXIT:
                 printf("BYE BYE :-*, :-*\n");
                 exit(0);
@@ -1426,7 +1385,7 @@ static void icedemo_console(void)
 /*
  * Display program usage.
  */
-static void icedemo_usage()
+static void ice_usage()
 {
     puts("Usage: icedemo [optons]");
     printf("icedemo v%s by pjsip.org\n", pj_get_version());
@@ -1525,7 +1484,7 @@ int main(int argc, char *argv[])
             icedemo.opt.max_host = atoi(pj_optarg);
             break;
         case 'h':
-            icedemo_usage();
+            ice_usage();
             return 0;
         case 's':
             printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
@@ -1574,11 +1533,11 @@ int main(int argc, char *argv[])
 
     //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
 
-    status = icedemo_init();
+    status = ice_init();
     if (status != PJ_SUCCESS)
         return 1;
 
-    icedemo_console();
+    ice_console();
 
     err_exit("Quitting..", PJ_SUCCESS);
 
