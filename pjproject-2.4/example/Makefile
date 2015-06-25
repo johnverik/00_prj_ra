@@ -1,4 +1,5 @@
 APP=iceController
+APP_CLIENT=iceclient
 APP2 = xml2test
 
 CFLAGS += -L../pjlib/lib 
@@ -29,10 +30,19 @@ SRCS +=  httpwrapper.c
 SRCS +=  getline.c 
 SRCS +=  xml2wrapper.c 
 
+
 all: 
 	gcc -o $(APP) $(SRCS)  $(CFLAGS)  
 	gcc -o $(APP2) -DBUILD_XMLWRAPPER xml2wrapper.c $(CFLAGS)  
 	
+
+#CLIENT_SRCS =   iceclient.c 
+#CLIENT_SRCS +=  httpwrapper.c 
+#CLIENT_SRCS +=  getline.c 
+#CLIENT_SRCS +=  xml2wrapper.c 
+#
+#client:
+#	gcc -o $(APP_CLIENT) $(CLIENT_SRCS)  $(CFLAGS)  
 
 clean:
 	rm -f $(APP)

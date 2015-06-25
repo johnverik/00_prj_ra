@@ -33,7 +33,6 @@ int portno;
 char sdp[1024];
 
 
-struct app_t icedemo;
 
 
 /* Utility to display error messages */
@@ -304,7 +303,7 @@ static void log_func(struct ice_trans_s* icetrans,  int level, const char *data,
  */
 // Note: this icedemo_init is called just one time
 
-static pj_status_t icedemo_init(void)
+static pj_status_t icedemo_init(ice_trans_t *icetrans)
 {
     pj_status_t status;
 
@@ -314,6 +313,8 @@ static pj_status_t icedemo_init(void)
     CHECK( pjlib_util_init() );
     CHECK( pjnath_init() );
 
+    // TODO: should be deleted
+#if 0
     /* Must create pool factory, where memory allocations come from */
 #ifdef MULTIPLE
     int i;
@@ -328,11 +329,15 @@ static pj_status_t icedemo_init(void)
 #else
     struct ice_trans_s* icetrans = &icedemo.ice_receive;
 #endif
+
+ #endif
+
+#if 0  //FIXME: consider if we need to log
         if (icedemo.opt.log_file) {
             icetrans->log_fhnd = fopen(icedemo.opt.log_file, "a");
             pj_log_set_log_func(&log_func);
         }
-
+#endif
 
         pj_caching_pool_init(&icetrans->cp, NULL, 0);
 

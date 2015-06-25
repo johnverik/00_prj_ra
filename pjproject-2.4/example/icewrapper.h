@@ -50,29 +50,4 @@ typedef struct ice_trans_s{
 
 } ice_trans_t;
 
-struct app_t
-{
-    /* Command line options are stored here */
-    struct options
-    {
-        unsigned    comp_cnt;
-        pj_str_t    ns;
-        int	    max_host;
-        pj_bool_t   regular;
-        pj_str_t    stun_srv;
-        pj_str_t    turn_srv;
-        pj_bool_t   turn_tcp;
-        pj_str_t    turn_username;
-        pj_str_t    turn_password;
-        pj_bool_t   turn_fingerprint;
-        const char *log_file;
-    } opt;
-
-    ice_trans_t ice_receive;
-#ifdef MULTIPLE
-    ice_trans_t ice_trans_list[MAX_ICE_TRANS];
-#endif
-
-} ;
-
 #endif
