@@ -21,12 +21,14 @@ CFLAGS += -L./ -lcurl
 CFLAGS += -L./ -lxml2 
 CFLAGS += -Wl,-rpath=./ 
 
+
+
 #debug
 CFLAGS += -g
 
 SRCS =   icewrapper.c 
 SRCS +=  httpwrapper.c 
-#SRCS +=  icecontroller.c 
+SRCS +=  icecontroller.c 
 SRCS +=  getline.c 
 SRCS +=  xml2wrapper.c 
 

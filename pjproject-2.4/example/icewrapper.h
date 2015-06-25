@@ -1,6 +1,24 @@
 #ifndef _ICE_WRAPPER_H_
 #define _ICE_WRAPPER_H_
 
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <pjlib.h>
+#include <pjlib-util.h>
+#include <pjnath.h>
+
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <netdb.h>
+#include <netinet/in.h>
+#include <string.h>
+#include <getopt.h>
+
+
 #include "pj/types.h"
 
 #define THIS_FILE   "icewrapper.c"
@@ -16,6 +34,26 @@
 #define MAX_ICE_TRANS 1
 
 #endif
+
+
+
+/* Command line options are stored here */
+typedef struct ice_option_s
+{
+    unsigned    comp_cnt;
+    pj_str_t    ns;
+    int	    max_host;
+    pj_bool_t   regular;
+    pj_str_t    stun_srv;
+    pj_str_t    turn_srv;
+    pj_bool_t   turn_tcp;
+    pj_str_t    turn_username;
+    pj_str_t    turn_password;
+    pj_bool_t   turn_fingerprint;
+    const char *log_file;
+} ice_option_t;
+
+
 
 typedef struct ice_trans_s{
 
@@ -48,6 +86,23 @@ typedef struct ice_trans_s{
 
     FILE		*log_fhnd;
 
+
+
 } ice_trans_t;
+
+pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt);
+void err_exit( const char *title, pj_status_t status , struct ice_trans_s* icetrans);
+
+void icedemo_create_instance(struct ice_trans_s* icetrans, ice_option_t opt);
+void reset_rem_info(struct ice_trans_s* icetrans);
+void icedemo_destroy_instance(struct ice_trans_s* icetrans);
+void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar);
+void icedemo_stop_session(struct ice_trans_s* icetrans);
+
+void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id);
+void icedemo_start_nego(struct ice_trans_s* icetrans);
+void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data);
+
+void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans, ice_option_t opt, char *usrid);
 
 #endif

@@ -2,35 +2,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <pjlib.h>
-#include <pjlib-util.h>
-#include <pjnath.h>
-
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#include <netdb.h>
-#include <netinet/in.h>
-#include <string.h>
-#include <getopt.h>
-
-
 
 #include "httpwrapper.h"
 #include "xml2wrapper.h"
-
-
 #include "icewrapper.h"
 
-char gUrl[] = "http://115.77.49.188:5001";
-char usrid[256];
-char host_name[256];
-int portno;
-char sdp[1024];
 
 
 
@@ -47,16 +23,10 @@ static void icedemo_perror(const char *title, pj_status_t status)
 /* Utility: display error message and exit application (usually
  * because of fatal error.
  */
-static void err_exit( const char *title, pj_status_t status)
+void err_exit( const char *title, pj_status_t status , struct ice_trans_s* icetrans)
 {
 
     int i;
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
-#ifdef MULTIPLE
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-    {
-        icetrans = &icedemo.ice_trans_list[i];
-#endif
         if (status != PJ_SUCCESS) {
             icedemo_perror(title, status);
         }
@@ -87,16 +57,13 @@ static void err_exit( const char *title, pj_status_t status)
             fclose(icetrans->log_fhnd);
             icetrans->log_fhnd = NULL;
         }
-#ifdef MULTIPLE
-    }
-#endif
     exit(status != PJ_SUCCESS);
 
 }
 
-#define CHECK(expr)	status=expr; \
+#define CHECK(expr, icetrans)	status=expr; \
     if (status!=PJ_SUCCESS) { \
-    err_exit(#expr, status); \
+    err_exit(#expr, status, icetrans); \
     }
 
 /*
@@ -281,7 +248,7 @@ static void cb_on_ice_complete(pj_ice_strans *ice_st,
         PJ_LOG(1,(THIS_FILE, "ICE %s failed: %s", opname, errmsg));
         pj_ice_strans_destroy(ice_st);
 
-        // TODO: update the ICE transaction
+        // FIXME: update the ICE transaction
         //icedemo.icest = NULL;
     }
 }
@@ -303,34 +270,16 @@ static void log_func(struct ice_trans_s* icetrans,  int level, const char *data,
  */
 // Note: this icedemo_init is called just one time
 
-static pj_status_t icedemo_init(ice_trans_t *icetrans)
+pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt)
 {
     pj_status_t status;
 
 
     /* Initialize the libraries before anything else */
-    CHECK( pj_init() );
-    CHECK( pjlib_util_init() );
-    CHECK( pjnath_init() );
+    CHECK( pj_init(), icetrans );
+    CHECK( pjlib_util_init(), icetrans );
+    CHECK( pjnath_init(), icetrans );
 
-    // TODO: should be deleted
-#if 0
-    /* Must create pool factory, where memory allocations come from */
-#ifdef MULTIPLE
-    int i;
-    for (i = 0; i <= MAX_ICE_TRANS; i++)
-    {
-
-        struct ice_trans_s* icetrans;
-        if (i < MAX_ICE_TRANS)
-            icetrans  = &icedemo.ice_trans_list[i];
-        else
-            icetrans = &icedemo.ice_receive;
-#else
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
-#endif
-
- #endif
 
 #if 0  //FIXME: consider if we need to log
         if (icedemo.opt.log_file) {
@@ -352,59 +301,59 @@ static pj_status_t icedemo_init(ice_trans_t *icetrans)
 
         /* Create timer heap for timer stuff */
         CHECK( pj_timer_heap_create(icetrans->pool, 100,
-                                    &icetrans->ice_cfg.stun_cfg.timer_heap) );
+                                    &icetrans->ice_cfg.stun_cfg.timer_heap), icetrans );
 
         /* and create ioqueue for network I/O stuff */
         CHECK( pj_ioqueue_create(icetrans->pool, 16,
-                                 &icetrans->ice_cfg.stun_cfg.ioqueue) );
+                                 &icetrans->ice_cfg.stun_cfg.ioqueue), icetrans );
 
         /* something must poll the timer heap and ioqueue,
      * unless we're on Symbian where the timer heap and ioqueue run
      * on themselves.
      */
         CHECK( pj_thread_create(icetrans->pool, "icedemo", &icedemo_worker_thread,
-                                icetrans, 0, 0, &icetrans->thread) );
+                                icetrans, 0, 0, &icetrans->thread), icetrans );
 
         icetrans->ice_cfg.af = pj_AF_INET();
 
         /* Create DNS resolver if nameserver is set */
-        if (icedemo.opt.ns.slen) {
+        if (opt.ns.slen) {
             CHECK( pj_dns_resolver_create(&icetrans->cp.factory,
                                           "resolver",
                                           0,
                                           icetrans->ice_cfg.stun_cfg.timer_heap,
                                           icetrans->ice_cfg.stun_cfg.ioqueue,
-                                          &icetrans->ice_cfg.resolver) );
+                                          &icetrans->ice_cfg.resolver), icetrans );
 
             CHECK( pj_dns_resolver_set_ns(icetrans->ice_cfg.resolver, 1,
-                                          &icedemo.opt.ns, NULL) );
+                                          &opt.ns, NULL) , icetrans);
         }
 
 
         /* -= Start initializing ICE stream transport config =- */
 
         /* Maximum number of host candidates */
-        if (icedemo.opt.max_host != -1)
-            icetrans->ice_cfg.stun.max_host_cands = icedemo.opt.max_host;
+        if (opt.max_host != -1)
+            icetrans->ice_cfg.stun.max_host_cands = opt.max_host;
 
         /* Nomination strategy */
-        if (icedemo.opt.regular)
+        if (opt.regular)
             icetrans->ice_cfg.opt.aggressive = PJ_FALSE;
         else
             icetrans->ice_cfg.opt.aggressive = PJ_TRUE;
 
         /* Configure STUN/srflx candidate resolution */
-        if (icedemo.opt.stun_srv.slen) {
+        if (opt.stun_srv.slen) {
             char *pos;
 
             /* Command line option may contain port number */
-            if ((pos=pj_strchr(&icedemo.opt.stun_srv, ':')) != NULL) {
-                icetrans->ice_cfg.stun.server.ptr = icedemo.opt.stun_srv.ptr;
-                icetrans->ice_cfg.stun.server.slen = (pos - icedemo.opt.stun_srv.ptr);
+            if ((pos=pj_strchr(&opt.stun_srv, ':')) != NULL) {
+                icetrans->ice_cfg.stun.server.ptr = opt.stun_srv.ptr;
+                icetrans->ice_cfg.stun.server.slen = (pos - opt.stun_srv.ptr);
 
                 icetrans->ice_cfg.stun.port = (pj_uint16_t)atoi(pos+1);
             } else {
-                icetrans->ice_cfg.stun.server = icedemo.opt.stun_srv;
+                icetrans->ice_cfg.stun.server = opt.stun_srv;
                 icetrans->ice_cfg.stun.port = PJ_STUN_PORT;
             }
 
@@ -415,28 +364,28 @@ static pj_status_t icedemo_init(ice_trans_t *icetrans)
         }
 
         /* Configure TURN candidate */
-        if (icedemo.opt.turn_srv.slen) {
+        if (opt.turn_srv.slen) {
             char *pos;
 
             /* Command line option may contain port number */
-            if ((pos=pj_strchr(&icedemo.opt.turn_srv, ':')) != NULL) {
-                icetrans->ice_cfg.turn.server.ptr = icedemo.opt.turn_srv.ptr;
-                icetrans->ice_cfg.turn.server.slen = (pos - icedemo.opt.turn_srv.ptr);
+            if ((pos=pj_strchr(&opt.turn_srv, ':')) != NULL) {
+                icetrans->ice_cfg.turn.server.ptr = opt.turn_srv.ptr;
+                icetrans->ice_cfg.turn.server.slen = (pos - opt.turn_srv.ptr);
 
                 icetrans->ice_cfg.turn.port = (pj_uint16_t)atoi(pos+1);
             } else {
-                icetrans->ice_cfg.turn.server = icedemo.opt.turn_srv;
+                icetrans->ice_cfg.turn.server = opt.turn_srv;
                 icetrans->ice_cfg.turn.port = PJ_STUN_PORT;
             }
 
             /* TURN credential */
             icetrans->ice_cfg.turn.auth_cred.type = PJ_STUN_AUTH_CRED_STATIC;
-            icetrans->ice_cfg.turn.auth_cred.data.static_cred.username = icedemo.opt.turn_username;
+            icetrans->ice_cfg.turn.auth_cred.data.static_cred.username = opt.turn_username;
             icetrans->ice_cfg.turn.auth_cred.data.static_cred.data_type = PJ_STUN_PASSWD_PLAIN;
-            icetrans->ice_cfg.turn.auth_cred.data.static_cred.data = icedemo.opt.turn_password;
+            icetrans->ice_cfg.turn.auth_cred.data.static_cred.data = opt.turn_password;
 
             /* Connection type to TURN server */
-            if (icedemo.opt.turn_tcp)
+            if (opt.turn_tcp)
                 icetrans->ice_cfg.turn.conn_type = PJ_TURN_TP_TCP;
             else
                 icetrans->ice_cfg.turn.conn_type = PJ_TURN_TP_UDP;
@@ -446,9 +395,6 @@ static pj_status_t icedemo_init(ice_trans_t *icetrans)
      */
             icetrans->ice_cfg.turn.alloc_param.ka_interval = KA_INTERVAL;
         }
-        #ifdef MULTIPLE
-    }
-#endif
 
     /* -= That's it for now, initialization is complete =- */
     return PJ_SUCCESS;
@@ -458,7 +404,7 @@ static pj_status_t icedemo_init(ice_trans_t *icetrans)
 /*
  * Create ICE stream transport instance, invoked from the menu.
  */
-static void icedemo_create_instance(struct ice_trans_s* icetrans)
+void icedemo_create_instance(struct ice_trans_s* icetrans, ice_option_t opt)
 {
     pj_ice_strans_cb icecb;
     pj_status_t status;
@@ -478,7 +424,7 @@ static void icedemo_create_instance(struct ice_trans_s* icetrans)
 
     status = pj_ice_strans_create("icedemo",		    /* object name  */
                                   &icetrans->ice_cfg,	    /* settings	    */
-                                  icedemo.opt.comp_cnt,	    /* comp_cnt	    */
+                                  opt.comp_cnt,	    /* comp_cnt	    */
                                   NULL,			    /* user data    */
                                   &icecb,			    /* callback	    */
                                   &icetrans->icest)		    /* instance ptr */
@@ -490,7 +436,7 @@ static void icedemo_create_instance(struct ice_trans_s* icetrans)
 }
 
 /* Utility to nullify parsed remote info */
-static void reset_rem_info(struct ice_trans_s* icetrans)
+void reset_rem_info(struct ice_trans_s* icetrans)
 {
     pj_bzero(&icetrans->rem, sizeof(icetrans->rem));
 }
@@ -499,7 +445,7 @@ static void reset_rem_info(struct ice_trans_s* icetrans)
 /*
  * Destroy ICE stream transport instance, invoked from the menu.
  */
-static void icedemo_destroy_instance(struct ice_trans_s* icetrans)
+void icedemo_destroy_instance(struct ice_trans_s* icetrans)
 {
     if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
@@ -518,7 +464,7 @@ static void icedemo_destroy_instance(struct ice_trans_s* icetrans)
 /*
  * Create ICE session, invoked from the menu.
  */
-static void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
+void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
 {
     pj_ice_sess_role role = (pj_tolower((pj_uint8_t)rolechar)=='o' ?
                                  PJ_ICE_SESS_ROLE_CONTROLLING :
@@ -548,7 +494,7 @@ static void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar
 /*
  * Stop/destroy ICE session, invoked from the menu.
  */
-static void icedemo_stop_session(struct ice_trans_s* icetrans)
+void icedemo_stop_session(struct ice_trans_s* icetrans)
 {
     pj_status_t status;
 
@@ -640,7 +586,7 @@ static int print_cand_to_xml(char buffer[], unsigned maxlen,
  * Encode ICE information in SDP.
  */
 
-static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsigned maxlen)
+static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsigned maxlen, ice_option_t opt, char *usrid)
 {
     char *p = buffer;
     unsigned comp;
@@ -682,7 +628,7 @@ static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsign
     PRINT(" <candidateList>");
 
     /* Write each component */
-    for (comp=0; comp<icedemo.opt.comp_cnt; ++comp) {
+    for (comp=0; comp<opt.comp_cnt; ++comp) {
         unsigned j, cand_cnt;
         pj_ice_sess_cand cand[PJ_ICE_ST_MAX_CAND];
         char ipaddr[PJ_INET6_ADDRSTRLEN];
@@ -764,8 +710,9 @@ static int extract_sdp_to_xml(struct ice_trans_s* icetrans,char buffer[], unsign
  */
 
 
-
-static void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans)
+//FIXME: migrate to iceController
+extern char gUrl[];
+void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans, ice_option_t opt, char *usrid)
 {
     static char buffer[2048];
     int len;
@@ -777,7 +724,7 @@ static void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans)
 
     puts("General info");
     puts("---------------");
-    printf("Component count    : %d\n", icedemo.opt.comp_cnt);
+    printf("Component count    : %d\n", opt.comp_cnt);
     printf("Status             : ");
     if (pj_ice_strans_sess_is_complete(icetrans->icest))
         puts("negotiation complete");
@@ -799,9 +746,9 @@ static void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans)
            pj_ice_strans_get_role(icetrans->icest)==PJ_ICE_SESS_ROLE_CONTROLLED ?
                "controlled" : "controlling");
 
-    len = extract_sdp_to_xml(icetrans, buffer, 2048);
+    len = extract_sdp_to_xml(icetrans, buffer, 2048, opt, usrid);
     if (len < 0)
-        err_exit("not enough buffer to show ICE status", -len);
+        err_exit("not enough buffer to show ICE status", -len, icetrans);
 
     // Register this local SDP to cloud
     char full_url[256];
@@ -820,7 +767,7 @@ static void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans)
 }
 
 
-static void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
+void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
 {
     static char buffer[1000];
     int len;
@@ -840,7 +787,7 @@ static void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
         for (i=0; i<icetrans->rem.cand_cnt; ++i) {
             len = print_cand(buffer, sizeof(buffer), &icetrans->rem.cand[i]);
             if (len < 0)
-                err_exit("not enough buffer to show ICE status", -len);
+                err_exit("not enough buffer to show ICE status", -len, icetrans);
 
             printf("  %s", buffer);
         }
@@ -854,7 +801,7 @@ static void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
 // Extract IP address along with its port of local address, flxadd, turn address
 // 2. Get peer from cloud
 
-static void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
+void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
 {
     char linebuf[80];
     unsigned media_cnt = 0;
@@ -1059,7 +1006,7 @@ on_error:
 /*
  * Start ICE negotiation! This function is invoked from the menu.
  */
-static void icedemo_start_nego(struct ice_trans_s* icetrans)
+void icedemo_start_nego(struct ice_trans_s* icetrans)
 {
     pj_str_t rufrag, rpwd;
     pj_status_t status;
@@ -1096,7 +1043,7 @@ static void icedemo_start_nego(struct ice_trans_s* icetrans)
 /*
  * Send application data to remote agent.
  */
-static void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
+void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
 {
     pj_status_t status;
 
@@ -1131,499 +1078,3 @@ static void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, co
         PJ_LOG(3,(THIS_FILE, "Data sent"));
 }
 
-
-
-
-/*
- * Display console menu
- */
-static void icedemo_print_menu(void)
-{
-
-    puts("");
-    puts("+----------------------------------------------------------------------+");
-    puts("|                    M E N U                                           |");
-    puts("+---+------------------------------------------------------------------+");
-    puts("| l | list           List all user id                                |");
-    puts("| s | start          start conversation with an userid                            |");
-    puts("+---+------------------------------------------------------------------+");
-    puts("| h |  help            * Help! *                                       |");
-    puts("| q |  quit            Quit                                            |");
-    puts("+----------------------------------------------------------------------+");
-
-}
-
-#ifdef MULTIPLE
-
-static int get_ice_tran_from_name(char *name)
-{
-    int i;
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-        if (strcmp(name, icedemo.ice_trans_list[i].name) == 0)
-            return i;
-    return i;
-}
-
-#endif
-
-
-/*
- * Main console loop.
- */
-
-enum COMMAND_IDX {
-    CMD_HOME_GET = 0,
-    CMD_DEVICE_GET,
-    CMD_DEVICE_REGISTER,
-    CMD_PEER_CONNECT,
-    CMD_PEER_SEND,
-    CMD_EXIT,
-    CMD_MAX
-};
-
-
-typedef struct cmd_handler_s{
-    enum COMMAND_IDX cmd_idx;
-    char help[256];
-    int (*cmd_func)(void *arg);
-
-}cmd_handler_t;
-
-
-static int api_device_register(void *arg)
-{
-
-    char register_device[] = "<?xml version=\"1.0\"?> \
-    <deviceRegister> \
-    <device> \
-    <deviceId/> \
-    <uniqueId>Mydevice1</uniqueId> \
-    <modelCode>Sensor</modelCode> \
-    <home> \
-    <description>Test Home</description> \
-    <networkID>networkID1</networkID> \
-    </home> \
-    <firmwareVersion>firmware.01.pvt</firmwareVersion> \
-    </device> \
-    <reRegister>0</reRegister> \
-    <smartDevice> \
-    <description>smart phone</description> \
-    <uniqueId>unq_2305130636</uniqueId> \
-    </smartDevice> \
-            </deviceRegister>";
-
-    char full_url[256];
-    char *buff;
-
-    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
-
-    strcpy(full_url, gUrl); // plus URL
-    strcpy(&full_url[strlen(full_url)], "/device/registerDevice"); // plus API
-    http_post_request(full_url, register_device);
-    //printf("[DEBUG] API: %s \n", full_url);
-
-}
-
-
-
-static int api_home_get(void* arg)
-{
-    char full_url[256];
-    char *buff;
-
-    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
-
-    strcpy(full_url, gUrl); // plus URL
-    strcpy(&full_url[strlen(full_url)], "/device/getDevicesFromNetwork/"); // plus API
-    sprintf(&full_url[strlen(full_url)], "%s", (char *)arg); // plus agrument
-    //printf("[DEBUG] API: %s \n", full_url);
-    http_get_request(full_url, buff);
-
-    xmlNode *device = xml_get_node_by_name(buff, "DeviceList");
-    xmlNode *cur_node;
-    for (cur_node = device->children; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type == XML_ELEMENT_NODE)
-        {
-            char *device_name = (char *)xmlNodeGetContent(cur_node);
-            printf("\t %s \n", device_name);
-            free(device_name);
-        }
-    }
-
-
-    free(buff);
-    return 0;
-}
-
-static int api_device_get(void* arg)
-{
-    char full_url[256];
-    char *buff;
-
-    strcpy(full_url, gUrl);
-    strcpy(&full_url[strlen(full_url)], "/device/getDevice/");
-    sprintf(&full_url[strlen(full_url)], "%s", (char*)arg);
-    //printf("[DEBUG] API: %s \n", full_url);
-
-    http_get_request(full_url, buff);
-    //printf("DEBUG recieved buffer: \n %s \n", buff);
-    // TODO: fine-tuning the result by using libxml
-    char *value = xml_get_content_by_name(buff, "uniqueId");
-    printf("Device information: \n");
-    printf("\t Device ID: %s \n", value);
-    printf("=============================\n");
-    free(value);
-    free(buff);
-    return 0;
-
-}
-
-static int api_peer_connect(void *arg)
-{
-
-    int index;
-#ifdef MULTIPLE
-    index = get_ice_tran_from_name(arg);
-
-    if (index < MAX_ICE_TRANS)
-    {
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        // re-initialize
-        ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
-        icedemo_connect_with_user(ice_trans, arg);
-        icedemo_start_nego(ice_trans);
-    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
-        // re-initialize
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
-        strcpy(ice_trans->name, arg);
-        icedemo_connect_with_user(ice_trans, arg);
-        icedemo_start_nego(ice_trans);
-    }else
-          return -1;
-#else
-    ice_trans_t *ice_trans = &icedemo.ice_receive;
-    strcpy(ice_trans->name, arg);
-    icedemo_connect_with_user(ice_trans, arg);
-    icedemo_start_nego(ice_trans);
-
-#endif
-    return 0;
-}
-
-
-typedef struct _MSG_S{
-    char username[256];
-    char msg[256];
-}MSG_T;
-
-static int api_peer_send(void *arg)
-{
-    MSG_T *msg = (MSG_T *)arg;
-
-#ifdef MULTIPLE
-    int index = get_ice_tran_from_name(msg->username);
-
-    if (index < MAX_ICE_TRANS)
-    {
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        // TODO: Send to a particular user
-        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
-    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
-    }else
-        return -1;
-#else
-      icedemo_send_data(&icedemo.ice_receive, 1, msg->msg);
-#endif
-    return 0;
-}
-
-
-
-cmd_handler_t cmd_list[CMD_MAX] = {
-    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
-    {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
-    {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
-    {.cmd_idx = CMD_PEER_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
-    {.cmd_idx = CMD_PEER_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
-    {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
-};
-
-void cmd_print_help()
-{
-    int i = 0;
-    printf("\n\n===============%s=======================\n", usrid);
-    for (i = 0; i < CMD_MAX; i++)
-        printf("%d: \t %s \n", cmd_list[i].cmd_idx, cmd_list[i].help);
-}
-
-
-
-int is_valid_int(const char *str)
-{
-    //
-    if (!*str)
-        return 0;
-    while (*str)
-    {
-        if (!isdigit(*str))
-            return 0;
-        else
-            ++str;
-    }
-
-    return 1;
-}
-
-
-
-
-static void icedemo_console(void)
-{
-    pj_bool_t app_quit = PJ_FALSE;
-
-    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
-
-    strcpy(icetrans->name, usrid);
-    icedemo_create_instance(icetrans);
-
-    usleep(1*1000*1000);
-    icedemo_init_session(icetrans, 'o');
-    usleep(4*1000*1000);
-    get_and_register_SDP_to_cloud(icetrans);
-
-
-       int i;
-#ifdef MULTIPLE
-       for (i = 0; i < MAX_ICE_TRANS; i++)
-    {
-        icetrans = &icedemo.ice_trans_list[i];
-        icedemo_create_instance(icetrans);
-        usleep(1*1000*1000);
-        icedemo_init_session(icetrans, 'o');
-        strcpy(icetrans->name, "");
-    }
-#endif
-
-    char cmd[256];
-    memset(cmd, 0, 256);
-    while (printf(">>>") && gets(&cmd[0]) != NULL)
-    {
-        //printf("cmd: %s \n", cmd);
-        if (is_valid_int(cmd))
-        {
-            int idx = atoi(cmd);
-        //printf("[DEBUG] command index : %d \n", idx );
-            switch (idx)
-            {
-            case CMD_HOME_GET:
-                cmd_list[idx].cmd_func("networkID1");
-                break;
-            case CMD_DEVICE_GET:
-                cmd_list[idx].cmd_func("device1");
-                break;
-           case CMD_DEVICE_REGISTER:
-                cmd_list[idx].cmd_func("registerDevice");
-                break;
-            case CMD_PEER_CONNECT:
-                printf("which user: ");
-                char user[256];
-                gets(user);
-                if (strlen(user) > 2)
-                    api_peer_connect(user);
-                break;
-            case CMD_PEER_SEND:
-            {
-                MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
-                printf("[MSG]: ");
-                gets(msg->msg);
-                if (strlen(msg->msg) > 1)
-                    cmd_list[idx].cmd_func(msg);
-                break;
-            }
-            case CMD_EXIT:
-                printf("BYE BYE :-*, :-*\n");
-                exit(0);
-            default:
-                cmd_print_help();
-                break;
-            }
-        }else
-            cmd_print_help();
-
-        memset(cmd, 0, 256);
-    }
-
-
-}
-
-
-/*
- * Display program usage.
- */
-static void icedemo_usage()
-{
-    puts("Usage: icedemo [optons]");
-    printf("icedemo v%s by pjsip.org\n", pj_get_version());
-    puts("");
-    puts("General options:");
-    puts(" --comp-cnt, -c N          Component count (default=1)");
-    puts(" --nameserver, -n IP       Configure nameserver to activate DNS SRV");
-    puts("                           resolution");
-    puts(" --max-host, -H N          Set max number of host candidates to N");
-    puts(" --regular, -R             Use regular nomination (default aggressive)");
-    puts(" --log-file, -L FILE       Save output to log FILE");
-    puts(" --help, -h                Display this screen.");
-    puts("");
-    puts("STUN related options:");
-    puts(" --stun-srv, -s HOSTDOM    Enable srflx candidate by resolving to STUN server.");
-    puts("                           HOSTDOM may be a \"host_or_ip[:port]\" or a domain");
-    puts("                           name if DNS SRV resolution is used.");
-    puts("");
-    puts("TURN related options:");
-    puts(" --turn-srv, -t HOSTDOM    Enable relayed candidate by using this TURN server.");
-    puts("                           HOSTDOM may be a \"host_or_ip[:port]\" or a domain");
-    puts("                           name if DNS SRV resolution is used.");
-    puts(" --turn-tcp, -T            Use TCP to connect to TURN server");
-    puts(" --turn-username, -u UID   Set TURN username of the credential to UID");
-    puts(" --turn-password, -p PWD   Set password of the credential to WPWD");
-    puts("Signalling Server related options:");
-    puts(" --usrid, -U usrid    user id ");
-    puts(" --signalling, -S    Signalling server");
-    puts(" --signalling-port, -P    Use fingerprint for outgoing TURN requests");
-
-    puts("Device specific option:");
-    puts("");
-}
-
-
-
-
-
-
-
-
-/*
- * And here's the main()
- */
-
-
-int main(int argc, char *argv[])
-{
-    struct pj_getopt_option long_options[] = {
-    { "comp-cnt",           1, 0, 'c'},
-    { "nameserver",		1, 0, 'n'},
-    { "max-host",		1, 0, 'H'},
-    { "help",		0, 0, 'h'},
-    { "stun-srv",		1, 0, 's'},
-    { "turn-srv",		1, 0, 't'},
-    { "turn-tcp",		0, 0, 'T'},
-    { "turn-username",	1, 0, 'u'},
-    { "turn-password",	1, 0, 'p'},
-    { "turn-fingerprint",	0, 0, 'F'},
-    { "regular",		0, 0, 'R'},
-    { "log-file",		1, 0, 'L'},
-    { "userid",   1, 0, 'U'},
-    { "singalling",   1, 0, 'S'},
-    { "singalling-port",   1, 0, 'P'},
-
-
-};
-    int c, opt_id;
-
-
-
-    strcpy(usrid, "userid");
-    strcpy(host_name, "116.100.11.109");
-    portno = 12345;
-    memset(sdp, 0, 1024);
-
-
-    pj_status_t status;
-
-    icedemo.opt.comp_cnt = 1;
-    icedemo.opt.max_host = -1;
-
-    while((c=pj_getopt_long(argc,argv, "c:n:s:t:u:p:H:L:U:S:P:hTFR", long_options, &opt_id))!=-1) {
-        switch (c) {
-        case 'c':
-            icedemo.opt.comp_cnt = atoi(pj_optarg);
-            if (icedemo.opt.comp_cnt < 1 || icedemo.opt.comp_cnt >= PJ_ICE_MAX_COMP) {
-                puts("Invalid component count value");
-                return 1;
-            }
-            break;
-        case 'n':
-            icedemo.opt.ns = pj_str(pj_optarg);
-            break;
-        case 'H':
-            icedemo.opt.max_host = atoi(pj_optarg);
-            break;
-        case 'h':
-            icedemo_usage();
-            return 0;
-        case 's':
-            printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
-            icedemo.opt.stun_srv = pj_str(pj_optarg);
-            break;
-        case 't':
-            icedemo.opt.turn_srv = pj_str(pj_optarg);
-            break;
-        case 'T':
-            icedemo.opt.turn_tcp = PJ_TRUE;
-            break;
-        case 'u':
-            icedemo.opt.turn_username = pj_str(pj_optarg);
-            break;
-        case 'p':
-            icedemo.opt.turn_password = pj_str(pj_optarg);
-            break;
-        case 'F':
-            icedemo.opt.turn_fingerprint = PJ_TRUE;
-            break;
-        case 'R':
-            icedemo.opt.regular = PJ_TRUE;
-            break;
-        case 'L':
-            icedemo.opt.log_file = pj_optarg;
-            break;
-        case 'U':
-            printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-            strcpy(usrid, pj_optarg);
-            break;
-        case 'S':
-            printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
-            strcpy(host_name, pj_optarg);
-            break;
-        case 'P':
-            printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-            portno = atoi(pj_optarg);
-            break;
-
-        default:
-            printf("Argument \"%s\" is not valid. Use -h to see help",
-                   argv[pj_optind]);
-            return 1;
-        }
-    }
-
-    //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    status = icedemo_init();
-    if (status != PJ_SUCCESS)
-        return 1;
-
-    icedemo_console();
-
-    err_exit("Quitting..", PJ_SUCCESS);
-
-    return 0;
-}
