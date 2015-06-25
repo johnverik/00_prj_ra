@@ -906,6 +906,18 @@ static void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *
 
                     if (cur_node->type == XML_ELEMENT_NODE)
                     {
+                        if (strcmp(cur_node->name, "comp_1") == 0)
+                        {
+                            value = (char *)xml_xmlnode_get_content_by_name(cur_node, "ip");
+                            strcpy(comp0_addr, value);
+                            free(value);
+
+                            value = (char *)xml_xmlnode_get_content_by_name(cur_node, "port");
+                            comp0_port = atoi(value);
+                            free(value);
+
+
+                        }else
                         {
 
 
@@ -928,8 +940,8 @@ static void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *
 
                         value = (char *)xml_xmlnode_get_content_by_name(cur_node, "ip");
                         strcpy(ipaddr, value);
-                        if (cur_node == a_node->children)
-                            strcpy(comp0_addr, value);
+                        //if (cur_node == a_node->children)
+                        //    strcpy(comp0_addr, value);
                         free(value);
 
                         value = (char *)xml_xmlnode_get_content_by_name(cur_node, "port");
@@ -994,6 +1006,7 @@ static void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *
                     }
                 }
                 }
+
 
     if (icetrans->rem.cand_cnt==0 ||
             icetrans->rem.ufrag[0]==0 ||
