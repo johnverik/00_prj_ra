@@ -5,11 +5,12 @@
 #include "icewrapper.h"
 #include "httpwrapper.h"
 #include "xml2wrapper.h"
+#include "utilities.h"
 
 
 #define MAX_ICE_TRANS  2
 
-struct app_t
+struct nat_client_t
 {
 
     ice_option_t opt;
@@ -20,8 +21,15 @@ struct app_t
 
 } ;
 
+//  Global variable
 
-struct app_t natclient;
+struct nat_client_t natclient;
+
+
+char gUrl[] = "http://115.77.49.188:5001";
+char usrid[256];
+char host_name[256];
+int portno;
 
 
 
@@ -31,49 +39,6 @@ struct app_t natclient;
  * data such as RTP/RTCP, and not packets that belong to ICE signaling (such
  * as STUN connectivity checks or TURN signaling).
  */
-
-
-static void hexDump (char *desc, void *addr, int len) {
-    int i;
-    unsigned char buff[17];
-    unsigned char *pc = (unsigned char*)addr;
-
-    // Output description if given.
-    if (desc != NULL)
-        printf ("%s:\n", desc);
-
-    // Process every byte in the data.
-    for (i = 0; i < len; i++) {
-        // Multiple of 16 means new line (with line offset).
-
-        if ((i % 16) == 0) {
-            // Just don't print ASCII for the zeroth line.
-            if (i != 0)
-                printf ("  %s\n", buff);
-
-            // Output the offset.
-            printf ("MSGMSG  %04x ", i);
-        }
-
-        // Now the hex code for the specific character.
-        printf (" %02x", pc[i]);
-
-        // And store a printable ASCII character for later.
-        if ((pc[i] < 0x20) || (pc[i] > 0x7e))
-            buff[i % 16] = '.';
-        else
-            buff[i % 16] = pc[i];
-        buff[(i % 16) + 1] = '\0';
-    }
-
-    // Pad out last line if not exactly 16 characters.
-    while ((i % 16) != 0) {
-        printf ("   ");
-        i++;
-    }
-    printf ("  %s\n", buff);
-}
-
 
 static void cb_on_rx_data(pj_ice_strans *ice_st,
                           unsigned comp_id,
@@ -130,30 +95,6 @@ static void cb_on_ice_complete(pj_ice_strans *ice_st,
 
 
 
-char gUrl[] = "http://115.77.49.188:5001";
-char usrid[256];
-char host_name[256];
-int portno;
-char sdp[1024];
-
-/*
-                          * Display console menu
-                          */
-static void natclient_print_menu(void)
-{
-
-    puts("");
-    puts("+----------------------------------------------------------------------+");
-    puts("|                    M E N U                                           |");
-    puts("+---+------------------------------------------------------------------+");
-    puts("| l | list           List all user id                                |");
-    puts("| s | start          start conversation with an userid                            |");
-    puts("+---+------------------------------------------------------------------+");
-    puts("| h |  help            * Help! *                                       |");
-    puts("| q |  quit            Quit                                            |");
-    puts("+----------------------------------------------------------------------+");
-
-}
 
 
 static int get_ice_tran_from_name(char *name)
@@ -166,10 +107,6 @@ static int get_ice_tran_from_name(char *name)
 }
 
 
-
-/*
-                   * Main console loop.
-                   */
 
 enum COMMAND_IDX {
     CMD_HOME_GET = 0,
@@ -286,7 +223,7 @@ static int api_peer_connect(void *arg)
     index = get_ice_tran_from_name(arg);
 
     if (index < MAX_ICE_TRANS)
-    { // do no thing
+    { // do no thing as the
 /*
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         // re-initialize
@@ -358,21 +295,6 @@ void cmd_print_help()
 
 
 
-int is_valid_int(const char *str)
-{
-    //
-    if (!*str)
-        return 0;
-    while (*str)
-    {
-        if (!isdigit(*str))
-            return 0;
-        else
-            ++str;
-    }
-
-    return 1;
-}
 
 
 
@@ -523,11 +445,11 @@ int main(int argc, char *argv[])
     int c, opt_id;
 
 
+    // default initialization
 
     strcpy(usrid, "userid");
     strcpy(host_name, "116.100.11.109");
     portno = 12345;
-    memset(sdp, 0, 1024);
 
 
     pj_status_t status;
@@ -597,10 +519,6 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
-
-    //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-
 
     // initialization for receiving
     status = natclient_init(&natclient.ice_receive, natclient.opt);

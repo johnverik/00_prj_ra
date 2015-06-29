@@ -691,11 +691,6 @@ void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
 }
 
 
-// TODO:
-// 1. Register the peer to cloud
-// How to get peer information
-// Extract IP address along with its port of local address, flxadd, turn address
-// 2. Get peer from cloud
 
 void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
 {
