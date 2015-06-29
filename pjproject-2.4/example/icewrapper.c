@@ -12,7 +12,7 @@
 
 
 /* Utility to display error messages */
-static void icedemo_perror(const char *title, pj_status_t status)
+static void natclient_perror(const char *title, pj_status_t status)
 {
     char errmsg[PJ_ERR_MSG_SIZE];
 
@@ -28,7 +28,7 @@ void err_exit( const char *title, pj_status_t status , struct ice_trans_s* icetr
 
     int i;
         if (status != PJ_SUCCESS) {
-            icedemo_perror(title, status);
+            natclient_perror(title, status);
         }
         PJ_LOG(3,(THIS_FILE, "Shutting down.."));
 
@@ -136,7 +136,7 @@ static pj_status_t handle_events(struct ice_trans_s* icetrans, unsigned max_msec
 /*
  * This is the worker thread that polls event in the background.
  */
-static int icedemo_worker_thread( void *unused)
+static int natclient_worker_thread( void *unused)
 {
     PJ_UNUSED_ARG(unused);
 
@@ -164,9 +164,9 @@ static void log_func(struct ice_trans_s* icetrans,  int level, const char *data,
  * once (and only once) during application initialization sequence by
  * main().
  */
-// Note: this icedemo_init is called just one time
+// Note: this natclient_init is called just one time
 
-pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt)
+pj_status_t natclient_init(ice_trans_t *icetrans, ice_option_t opt)
 {
     pj_status_t status;
 
@@ -178,8 +178,8 @@ pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt)
 
 
 #if 0  //FIXME: consider if we need to log
-        if (icedemo.opt.log_file) {
-            icetrans->log_fhnd = fopen(icedemo.opt.log_file, "a");
+        if (natclient.opt.log_file) {
+            icetrans->log_fhnd = fopen(natclient.opt.log_file, "a");
             pj_log_set_log_func(&log_func);
         }
 #endif
@@ -192,7 +192,7 @@ pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt)
         icetrans->ice_cfg.stun_cfg.pf = &icetrans->cp.factory;
 
         /* Create application memory pool */
-        icetrans->pool = pj_pool_create(&icetrans->cp.factory, "icedemo",
+        icetrans->pool = pj_pool_create(&icetrans->cp.factory, "natclient",
                                       512, 512, NULL);
 
         /* Create timer heap for timer stuff */
@@ -207,7 +207,7 @@ pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt)
      * unless we're on Symbian where the timer heap and ioqueue run
      * on themselves.
      */
-        CHECK( pj_thread_create(icetrans->pool, "icedemo", &icedemo_worker_thread,
+        CHECK( pj_thread_create(icetrans->pool, "natclient", &natclient_worker_thread,
                                 icetrans, 0, 0, &icetrans->thread), icetrans );
 
         icetrans->ice_cfg.af = pj_AF_INET();
@@ -300,7 +300,7 @@ pj_status_t icedemo_init(ice_trans_t *icetrans, ice_option_t opt)
 /*
  * Create ICE stream transport instance, invoked from the menu.
  */
-void icedemo_create_instance(struct ice_trans_s* icetrans, ice_option_t opt)
+void natclient_create_instance(struct ice_trans_s* icetrans, ice_option_t opt)
 {
     pj_ice_strans_cb icecb;
     pj_status_t status;
@@ -318,7 +318,7 @@ void icedemo_create_instance(struct ice_trans_s* icetrans, ice_option_t opt)
     /* create the instance */
     // TODO: just wonder if the object name should be unique among ICE transation
 
-    status = pj_ice_strans_create("icedemo",		    /* object name  */
+    status = pj_ice_strans_create("natclient",		    /* object name  */
                                   &icetrans->ice_cfg,	    /* settings	    */
                                   opt.comp_cnt,	    /* comp_cnt	    */
                                   NULL,			    /* user data    */
@@ -326,7 +326,7 @@ void icedemo_create_instance(struct ice_trans_s* icetrans, ice_option_t opt)
                                   &icetrans->icest)		    /* instance ptr */
             ;
     if (status != PJ_SUCCESS)
-        icedemo_perror("error creating ice", status);
+        natclient_perror("error creating ice", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE instance successfully created"));
 }
@@ -341,7 +341,7 @@ void reset_rem_info(struct ice_trans_s* icetrans)
 /*
  * Destroy ICE stream transport instance, invoked from the menu.
  */
-void icedemo_destroy_instance(struct ice_trans_s* icetrans)
+void natclient_destroy_instance(struct ice_trans_s* icetrans)
 {
     if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
@@ -360,7 +360,7 @@ void icedemo_destroy_instance(struct ice_trans_s* icetrans)
 /*
  * Create ICE session, invoked from the menu.
  */
-void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
+void natclient_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
 {
     pj_ice_sess_role role = (pj_tolower((pj_uint8_t)rolechar)=='o' ?
                                  PJ_ICE_SESS_ROLE_CONTROLLING :
@@ -379,7 +379,7 @@ void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
 
     status = pj_ice_strans_init_ice(icetrans->icest, role, NULL, NULL);
     if (status != PJ_SUCCESS)
-        icedemo_perror("error creating session", status);
+        natclient_perror("error creating session", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE session created"));
 
@@ -390,7 +390,7 @@ void icedemo_init_session(struct ice_trans_s* icetrans, unsigned rolechar)
 /*
  * Stop/destroy ICE session, invoked from the menu.
  */
-void icedemo_stop_session(struct ice_trans_s* icetrans)
+void natclient_stop_session(struct ice_trans_s* icetrans)
 {
     pj_status_t status;
 
@@ -406,7 +406,7 @@ void icedemo_stop_session(struct ice_trans_s* icetrans)
 
     status = pj_ice_strans_stop_ice(icetrans->icest);
     if (status != PJ_SUCCESS)
-        icedemo_perror("error stopping session", status);
+        natclient_perror("error stopping session", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE session stopped"));
 
@@ -697,7 +697,7 @@ void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
 // Extract IP address along with its port of local address, flxadd, turn address
 // 2. Get peer from cloud
 
-void icedemo_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
+void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
 {
     char linebuf[80];
     unsigned media_cnt = 0;
@@ -902,7 +902,7 @@ on_error:
 /*
  * Start ICE negotiation! This function is invoked from the menu.
  */
-void icedemo_start_nego(struct ice_trans_s* icetrans)
+void natclient_start_nego(struct ice_trans_s* icetrans)
 {
     pj_str_t rufrag, rpwd;
     pj_status_t status;
@@ -930,7 +930,7 @@ void icedemo_start_nego(struct ice_trans_s* icetrans)
                                      icetrans->rem.cand_cnt,
                                      icetrans->rem.cand);
     if (status != PJ_SUCCESS)
-        icedemo_perror("Error starting ICE", status);
+        natclient_perror("Error starting ICE", status);
     else
         PJ_LOG(3,(THIS_FILE, "ICE negotiation started"));
 }
@@ -939,7 +939,7 @@ void icedemo_start_nego(struct ice_trans_s* icetrans)
 /*
  * Send application data to remote agent.
  */
-void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
+void natclient_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const char *data)
 {
     pj_status_t status;
 
@@ -969,7 +969,7 @@ void icedemo_send_data(struct ice_trans_s* icetrans, unsigned comp_id, const cha
                                   &icetrans->rem.def_addr[comp_id-1],
                                   pj_sockaddr_get_len(&icetrans->rem.def_addr[comp_id-1]));
     if (status != PJ_SUCCESS)
-        icedemo_perror("Error sending data", status);
+        natclient_perror("Error sending data", status);
     else
         PJ_LOG(3,(THIS_FILE, "Data sent"));
 }

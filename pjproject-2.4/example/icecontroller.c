@@ -6,7 +6,6 @@
 #include "httpwrapper.h"
 #include "xml2wrapper.h"
 
-#define MULTIPLE
 
 #define MAX_ICE_TRANS  2
 
@@ -22,7 +21,7 @@ struct app_t
 } ;
 
 
-struct app_t icedemo;
+struct app_t natclient;
 
 
 
@@ -125,7 +124,7 @@ static void cb_on_ice_complete(pj_ice_strans *ice_st,
         pj_ice_strans_destroy(ice_st);
 
         // FIXME: update the ICE transaction
-        //icedemo.icest = NULL;
+        //natclient.icest = NULL;
     }
 }
 
@@ -140,7 +139,7 @@ char sdp[1024];
 /*
                           * Display console menu
                           */
-static void icedemo_print_menu(void)
+static void natclient_print_menu(void)
 {
 
     puts("");
@@ -161,7 +160,7 @@ static int get_ice_tran_from_name(char *name)
 {
     int i;
     for (i = 0; i < MAX_ICE_TRANS; i++)
-        if (strcmp(name, icedemo.ice_trans_list[i].name) == 0)
+        if (strcmp(name, natclient.ice_trans_list[i].name) == 0)
             return i;
     return i;
 }
@@ -291,9 +290,9 @@ static int api_peer_connect(void *arg)
 /*
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         // re-initialize
-        ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
-        icedemo_connect_with_user(ice_trans, arg);
-        icedemo_start_nego(ice_trans);
+        ice_trans_t *ice_trans = &natclient.ice_trans_list[index];
+        natclient_connect_with_user(ice_trans, arg);
+        natclient_start_nego(ice_trans);
         */
     }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
         // Get an empty ice
@@ -301,10 +300,10 @@ static int api_peer_connect(void *arg)
         printf("DEBUG start initialization \n", __FILE__, __LINE__);
 
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        ice_trans_t *ice_trans = &icedemo.ice_trans_list[index];
+        ice_trans_t *ice_trans = &natclient.ice_trans_list[index];
         strcpy(ice_trans->name, arg);
-        icedemo_connect_with_user(ice_trans, arg);
-        icedemo_start_nego(ice_trans);
+        natclient_connect_with_user(ice_trans, arg);
+        natclient_start_nego(ice_trans);
     }else
         return -1;
 
@@ -321,7 +320,6 @@ static int api_peer_send(void *arg)
 {
     MSG_T *msg = (MSG_T *)arg;
 
-#ifdef MULTIPLE
     int index = get_ice_tran_from_name(msg->username);
 
     if (index < MAX_ICE_TRANS)
@@ -329,16 +327,13 @@ static int api_peer_send(void *arg)
 
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         // TODO: Send to a particular user
-        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
+        natclient_send_data(&natclient.ice_trans_list[index], 1, msg->msg);
     }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
 
         printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        icedemo_send_data(&icedemo.ice_trans_list[index], 1, msg->msg);
+        natclient_send_data(&natclient.ice_trans_list[index], 1, msg->msg);
     }else
         return -1;
-#else
-    icedemo_send_data(&icedemo.ice_receive, 1, msg->msg);
-#endif
     return 0;
 }
 
@@ -381,34 +376,31 @@ int is_valid_int(const char *str)
 
 
 
-
-static void icedemo_console(void)
+static void natclient_console(void)
 {
     pj_bool_t app_quit = PJ_FALSE;
 
     printf("[Debug] %s, %d \n", __FILE__, __LINE__);
 
-    struct ice_trans_s* icetrans = &icedemo.ice_receive;
+    struct ice_trans_s* icetrans = &natclient.ice_receive;
 
     strcpy(icetrans->name, usrid);
-    icedemo_create_instance(icetrans,  icedemo.opt);
+    natclient_create_instance(icetrans,  natclient.opt);
 
     usleep(1*1000*1000);
-    icedemo_init_session(icetrans, 'o');
+    natclient_init_session(icetrans, 'o');
     usleep(4*1000*1000);
-    get_and_register_SDP_to_cloud(icetrans, icedemo.opt, usrid);
+    get_and_register_SDP_to_cloud(icetrans, natclient.opt, usrid);
     int i;
 
-#ifdef MULTIPLE
     for (i = 0; i < MAX_ICE_TRANS; i++)
     {
-        icetrans = &icedemo.ice_trans_list[i];
-        icedemo_create_instance(icetrans, icedemo.opt);
+        icetrans = &natclient.ice_trans_list[i];
+        natclient_create_instance(icetrans, natclient.opt);
         usleep(1*1000*1000);
-        icedemo_init_session(icetrans, 'o');
+        natclient_init_session(icetrans, 'o');
         strcpy(icetrans->name, "");
     }
-#endif
 
     char cmd[256];
     memset(cmd, 0, 256);
@@ -470,10 +462,10 @@ static void icedemo_console(void)
 /*
                    * Display program usage.
                    */
-static void icedemo_usage()
+static void natclient_usage()
 {
-    puts("Usage: icedemo [optons]");
-    printf("icedemo v%s by pjsip.org\n", pj_get_version());
+    puts("Usage: natclient [optons]");
+    printf("natclient v%s by pjsip.org\n", pj_get_version());
     puts("");
     puts("General options:");
     puts(" --comp-cnt, -c N          Component count (default=1)");
@@ -540,51 +532,51 @@ int main(int argc, char *argv[])
 
     pj_status_t status;
 
-    icedemo.opt.comp_cnt = 1;
-    icedemo.opt.max_host = -1;
+    natclient.opt.comp_cnt = 1;
+    natclient.opt.max_host = -1;
 
     while((c=pj_getopt_long(argc,argv, "c:n:s:t:u:p:H:L:U:S:P:hTFR", long_options, &opt_id))!=-1) {
         switch (c) {
         case 'c':
-            icedemo.opt.comp_cnt = atoi(pj_optarg);
-            if (icedemo.opt.comp_cnt < 1 || icedemo.opt.comp_cnt >= PJ_ICE_MAX_COMP) {
+            natclient.opt.comp_cnt = atoi(pj_optarg);
+            if (natclient.opt.comp_cnt < 1 || natclient.opt.comp_cnt >= PJ_ICE_MAX_COMP) {
                 puts("Invalid component count value");
                 return 1;
             }
             break;
         case 'n':
-            icedemo.opt.ns = pj_str(pj_optarg);
+            natclient.opt.ns = pj_str(pj_optarg);
             break;
         case 'H':
-            icedemo.opt.max_host = atoi(pj_optarg);
+            natclient.opt.max_host = atoi(pj_optarg);
             break;
         case 'h':
-            icedemo_usage();
+            natclient_usage();
             return 0;
         case 's':
             printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
-            icedemo.opt.stun_srv = pj_str(pj_optarg);
+            natclient.opt.stun_srv = pj_str(pj_optarg);
             break;
         case 't':
-            icedemo.opt.turn_srv = pj_str(pj_optarg);
+            natclient.opt.turn_srv = pj_str(pj_optarg);
             break;
         case 'T':
-            icedemo.opt.turn_tcp = PJ_TRUE;
+            natclient.opt.turn_tcp = PJ_TRUE;
             break;
         case 'u':
-            icedemo.opt.turn_username = pj_str(pj_optarg);
+            natclient.opt.turn_username = pj_str(pj_optarg);
             break;
         case 'p':
-            icedemo.opt.turn_password = pj_str(pj_optarg);
+            natclient.opt.turn_password = pj_str(pj_optarg);
             break;
         case 'F':
-            icedemo.opt.turn_fingerprint = PJ_TRUE;
+            natclient.opt.turn_fingerprint = PJ_TRUE;
             break;
         case 'R':
-            icedemo.opt.regular = PJ_TRUE;
+            natclient.opt.regular = PJ_TRUE;
             break;
         case 'L':
-            icedemo.opt.log_file = pj_optarg;
+            natclient.opt.log_file = pj_optarg;
             break;
         case 'U':
             printf("[Debug] %s, %d \n", __FILE__, __LINE__);
@@ -611,30 +603,30 @@ int main(int argc, char *argv[])
 
 
     // initialization for receiving
-    status = icedemo_init(&icedemo.ice_receive, icedemo.opt);
-    get_and_register_SDP_to_cloud(&icedemo.ice_receive, icedemo.opt, usrid);
+    status = natclient_init(&natclient.ice_receive, natclient.opt);
+    get_and_register_SDP_to_cloud(&natclient.ice_receive, natclient.opt, usrid);
 
-    icedemo.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
-    icedemo.ice_receive.cb_on_rx_data = cb_on_rx_data;
+    natclient.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
+    natclient.ice_receive.cb_on_rx_data = cb_on_rx_data;
 
 
     int i;
     for (i = 0; i < MAX_ICE_TRANS; i++)
     {
-        icedemo.ice_trans_list[i].cb_on_ice_complete = cb_on_ice_complete;
-        icedemo.ice_trans_list[i].cb_on_rx_data = cb_on_rx_data;
-        icedemo_init(&icedemo.ice_trans_list[i], icedemo.opt);
+        natclient.ice_trans_list[i].cb_on_ice_complete = cb_on_ice_complete;
+        natclient.ice_trans_list[i].cb_on_rx_data = cb_on_rx_data;
+        natclient_init(&natclient.ice_trans_list[i], natclient.opt);
     }
 
 
     if (status != PJ_SUCCESS)
         return 1;
 
-    icedemo_console();
+    natclient_console();
 
-    err_exit("Quitting..", PJ_SUCCESS, &icedemo.ice_receive);
+    err_exit("Quitting..", PJ_SUCCESS, &natclient.ice_receive);
     for (i = 0; i < MAX_ICE_TRANS; i++)
-        err_exit("Quitting..", PJ_SUCCESS, &icedemo.ice_trans_list[i]);
+        err_exit("Quitting..", PJ_SUCCESS, &natclient.ice_trans_list[i]);
 
     // FIXME: exit all opened ice session
 
