@@ -54,6 +54,16 @@ typedef struct ice_option_s
 } ice_option_t;
 
 
+typedef void (*callback_rx_data_f)(pj_ice_strans *, unsigned, void *, pj_size_t,
+                          const pj_sockaddr_t *,
+                          unsigned );
+
+
+
+typedef void (*callback_ice_complete_f)(pj_ice_strans *,
+                               pj_ice_strans_op ,
+                               pj_status_t );
+
 
 typedef struct ice_trans_s{
 
@@ -85,6 +95,10 @@ typedef struct ice_trans_s{
     } rem;
 
     FILE		*log_fhnd;
+
+    callback_rx_data_f cb_on_rx_data;
+    callback_ice_complete_f cb_on_ice_complete;
+
 
 
 

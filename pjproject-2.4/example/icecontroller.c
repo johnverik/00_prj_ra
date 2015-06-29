@@ -25,193 +25,109 @@ struct app_t
 struct app_t icedemo;
 
 
-#if 0
-char gUrl[] = "http://115.77.49.188:5001";
+
+/*
+ * This is the callback that is registered to the ICE stream transport to
+ * receive notification about incoming data. By "data" it means application
+ * data such as RTP/RTCP, and not packets that belong to ICE signaling (such
+ * as STUN connectivity checks or TURN signaling).
+ */
 
 
-enum COMMAND_IDX {
-    CMD_HOME_GET = 0,
-    CMD_DEVICE_GET,
-    CMD_DEVICE_REGISTER,
-    CMD_EXIT,
-    CMD_MAX
-};
+static void hexDump (char *desc, void *addr, int len) {
+    int i;
+    unsigned char buff[17];
+    unsigned char *pc = (unsigned char*)addr;
 
+    // Output description if given.
+    if (desc != NULL)
+        printf ("%s:\n", desc);
 
-typedef struct cmd_handler_s{
-    enum COMMAND_IDX cmd_idx;
-    char help[256];
-    int (*cmd_func)(void *arg);
+    // Process every byte in the data.
+    for (i = 0; i < len; i++) {
+        // Multiple of 16 means new line (with line offset).
 
-}cmd_handler_t;
+        if ((i % 16) == 0) {
+            // Just don't print ASCII for the zeroth line.
+            if (i != 0)
+                printf ("  %s\n", buff);
 
-
-static int api_device_register(void *arg)
-{
-
-    char register_device[] = "<?xml version=\"1.0\"?> \
-            <deviceRegister> \
-            <device> \
-            <deviceId/> \
-            <uniqueId>Mydevice1</uniqueId> \
-            <modelCode>Sensor</modelCode> \
-            <home> \
-            <description>Test Home</description> \
-            <networkID>networkID1</networkID> \
-            </home> \
-            <firmwareVersion>firmware.01.pvt</firmwareVersion> \
-            </device> \
-            <reRegister>0</reRegister> \
-            <smartDevice> \
-            <description>smart phone</description> \
-            <uniqueId>unq_2305130636</uniqueId> \
-            </smartDevice> \
-            </deviceRegister>";
-
-            char full_url[256];
-    char *buff;
-
-    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
-
-    strcpy(full_url, gUrl); // plus URL
-    strcpy(&full_url[strlen(full_url)], "/device/registerDevice"); // plus API
-    http_post_request(full_url, register_device);
-    //printf("[DEBUG] API: %s \n", full_url);
-
-}
-
-
-
-static int api_home_get(void* arg)
-{
-    char full_url[256];
-    char *buff;
-
-    //printf("[DEBUG] %s, %d  \n", __FUNCTION__, __LINE__ );
-
-    strcpy(full_url, gUrl); // plus URL
-    strcpy(&full_url[strlen(full_url)], "/device/getDevicesFromNetwork/"); // plus API
-    sprintf(&full_url[strlen(full_url)], "%s", arg); // plus agrument
-    //printf("[DEBUG] API: %s \n", full_url);
-    http_get_request(full_url, &buff);
-
-    xmlNode *device = xml_get_node_by_name(buff, "DeviceList");
-    xmlNode *cur_node;
-    for (cur_node = device->children; cur_node; cur_node = cur_node->next) {
-        if (cur_node->type == XML_ELEMENT_NODE)
-        {
-            char *device_name = (char *)xmlNodeGetContent(cur_node);
-            printf("\t %s \n", device_name);
-            free(device_name);
+            // Output the offset.
+            printf ("MSGMSG  %04x ", i);
         }
-    }
 
+        // Now the hex code for the specific character.
+        printf (" %02x", pc[i]);
 
-    free(buff);
-    return 0;
-}
-
-static int api_device_get(void* arg)
-{
-    char full_url[256];
-    char *buff;
-
-    strcpy(full_url, gUrl);
-    strcpy(&full_url[strlen(full_url)], "/device/getDevice/");
-    sprintf(&full_url[strlen(full_url)], "%s", arg);
-    //printf("[DEBUG] API: %s \n", full_url);
-
-    http_get_request(full_url, &buff);
-    //printf("DEBUG recieved buffer: \n %s \n", buff);
-    // TODO: fine-tuning the result by using libxml
-    char *value = xml_get_content_by_name(buff, "uniqueId");
-    printf("Device information: \n");
-    printf("\t Device ID: %s \n", value);
-    printf("=============================\n");
-    free(value);
-    free(buff);
-    return 0;
-
-}
-
-int cmd_more(void* arg);
-
-cmd_handler_t cmd_list[CMD_MAX] = {
-    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
-    {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
-    {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
-    {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
-};
-
-void cmd_print_help()
-{
-    int i = 0;
-    for (i = 0; i < CMD_MAX; i++)
-        printf("%d: \t %s \n", cmd_list[i].cmd_idx, cmd_list[i].help);
-}
-
-
-
-int is_valid_int(const char *str)
-{
-    //
-    if (!*str)
-        return 0;
-    while (*str)
-    {
-        if (!isdigit(*str))
-            return 0;
+        // And store a printable ASCII character for later.
+        if ((pc[i] < 0x20) || (pc[i] > 0x7e))
+            buff[i % 16] = '.';
         else
-            ++str;
+            buff[i % 16] = pc[i];
+        buff[(i % 16) + 1] = '\0';
     }
 
-    return 1;
+    // Pad out last line if not exactly 16 characters.
+    while ((i % 16) != 0) {
+        printf ("   ");
+        i++;
+    }
+    printf ("  %s\n", buff);
 }
 
-int main(int argc, char *argv[])
+
+static void cb_on_rx_data(pj_ice_strans *ice_st,
+                          unsigned comp_id,
+                          void *pkt, pj_size_t size,
+                          const pj_sockaddr_t *src_addr,
+                          unsigned src_addr_len)
 {
-#if 1
-    char cmd[256];
-    memset(cmd, 0, 256);
-    while (printf(">>>") && gets(&cmd[0]) != NULL)
-#else
-    char *cmd;
-    while (printf(">>>") && getline1(&cmd, = NULL)
-       #endif
-    {
-           //printf("cmd: %s \n", cmd);
-           if (is_valid_int(cmd))
-    {
-           int idx = atoi(cmd);
-           //printf("[DEBUG] command index : %d \n", idx );
-           switch (idx)
-    {
-           case CMD_HOME_GET:
-           cmd_list[idx].cmd_func("networkID1");
-           break;
-           case CMD_DEVICE_GET:
-           cmd_list[idx].cmd_func("device1");
-           break;
-           case CMD_DEVICE_REGISTER:
-           cmd_list[idx].cmd_func("registerDevice");
-           break;
-           case CMD_EXIT:
-           printf("BYE BYE :-*, :-*\n");
-           exit(0);
-           default:
-           cmd_print_help();
-           break;
-}
-}else
-           cmd_print_help();
+    char ipstr[PJ_INET6_ADDRSTRLEN+10];
 
-           memset(cmd, 0, 256);
-}
+    PJ_UNUSED_ARG(ice_st);
+    PJ_UNUSED_ARG(src_addr_len);
+    PJ_UNUSED_ARG(pkt);
+
+    // Don't do this! It will ruin the packet buffer in case TCP is used!
+    //((char*)pkt)[size] = '\0';
+
+    PJ_LOG(3,(THIS_FILE, "Component %d: received %d bytes data from %s: \"%.*s\"",
+              comp_id, size,
+              pj_sockaddr_print(src_addr, ipstr, sizeof(ipstr), 3),
+              (unsigned)size,
+              (char*)pkt));
+
+    // TODO: how to know which session this RX belongs to
+    hexDump(NULL, pkt, size);
+
 
 }
 
+/*
+ * This is the callback that is registered to the ICE stream transport to
+ * receive notification about ICE state progression.
+ */
+static void cb_on_ice_complete(pj_ice_strans *ice_st,
+                               pj_ice_strans_op op,
+                               pj_status_t status)
+{
+    const char *opname =
+            (op==PJ_ICE_STRANS_OP_INIT? "initialization" :
+                                        (op==PJ_ICE_STRANS_OP_NEGOTIATION ? "negotiation" : "unknown_op"));
 
-       #else
+    if (status == PJ_SUCCESS) {
+        PJ_LOG(3,(THIS_FILE, "ICE %s successful", opname));
+    } else {
+        char errmsg[PJ_ERR_MSG_SIZE];
+
+        pj_strerror(status, errmsg, sizeof(errmsg));
+        PJ_LOG(1,(THIS_FILE, "ICE %s failed: %s", opname, errmsg));
+        pj_ice_strans_destroy(ice_st);
+
+        // FIXME: update the ICE transaction
+        //icedemo.icest = NULL;
+    }
+}
 
 
 
@@ -496,13 +412,14 @@ static void icedemo_console(void)
 
     char cmd[256];
     memset(cmd, 0, 256);
-    while (printf(">>>") && gets(&cmd[0]) != NULL)
+    while (printf(">>>") && fgets(&cmd[0], 256, stdin) != NULL)
     {
-        //printf("cmd: %s \n", cmd);
-        if (is_valid_int(cmd))
+        printf("cmd: %s \n", cmd);
+        //if (is_valid_int(cmd))
+        if ( cmd[0] >= '0' && cmd[0] <= '9')
         {
             int idx = atoi(cmd);
-            //printf("[DEBUG] command index : %d \n", idx );
+            printf("[DEBUG] command index : %d \n", idx );
             switch (idx)
             {
             case CMD_HOME_GET:
@@ -517,7 +434,8 @@ static void icedemo_console(void)
             case CMD_PEER_CONNECT:
                 printf("which user: ");
                 char user[256];
-                gets(user);
+		memset(user, 256, 0);
+                fgets(user, 256, stdin);
                 if (strlen(user) > 2)
                     api_peer_connect(user);
                 break;
@@ -525,9 +443,9 @@ static void icedemo_console(void)
             {
                 MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
                 printf("[USR]: ");
-                gets(msg->username);
+                fgets(msg->username, 256, stdin);
                 printf("[MSG]: ");
-                gets(msg->msg);
+                fgets(msg->msg, 256, stdin);
                 if (strlen(msg->msg) > 1)
                     cmd_list[idx].cmd_func(msg);
                 break;
@@ -587,16 +505,6 @@ static void icedemo_usage()
     puts("");
 }
 
-
-
-
-
-
-
-
-/*
-                   * And here's the main()
-                   */
 
 
 int main(int argc, char *argv[])
@@ -706,9 +614,17 @@ int main(int argc, char *argv[])
     status = icedemo_init(&icedemo.ice_receive, icedemo.opt);
     get_and_register_SDP_to_cloud(&icedemo.ice_receive, icedemo.opt, usrid);
 
+    icedemo.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
+    icedemo.ice_receive.cb_on_rx_data = cb_on_rx_data;
+
+
     int i;
     for (i = 0; i < MAX_ICE_TRANS; i++)
+    {
+        icedemo.ice_trans_list[i].cb_on_ice_complete = cb_on_ice_complete;
+        icedemo.ice_trans_list[i].cb_on_rx_data = cb_on_rx_data;
         icedemo_init(&icedemo.ice_trans_list[i], icedemo.opt);
+    }
 
 
     if (status != PJ_SUCCESS)
@@ -725,5 +641,3 @@ int main(int argc, char *argv[])
 
     return 0;
 }
-
-#endif

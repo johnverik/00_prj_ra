@@ -149,110 +149,6 @@ static int icedemo_worker_thread( void *unused)
     return 0;
 }
 
-/*
- * This is the callback that is registered to the ICE stream transport to
- * receive notification about incoming data. By "data" it means application
- * data such as RTP/RTCP, and not packets that belong to ICE signaling (such
- * as STUN connectivity checks or TURN signaling).
- */
-
-
-static void hexDump (char *desc, void *addr, int len) {
-    int i;
-    unsigned char buff[17];
-    unsigned char *pc = (unsigned char*)addr;
-
-    // Output description if given.
-    if (desc != NULL)
-        printf ("%s:\n", desc);
-
-    // Process every byte in the data.
-    for (i = 0; i < len; i++) {
-        // Multiple of 16 means new line (with line offset).
-
-        if ((i % 16) == 0) {
-            // Just don't print ASCII for the zeroth line.
-            if (i != 0)
-                printf ("  %s\n", buff);
-
-            // Output the offset.
-            printf ("MSGMSG  %04x ", i);
-        }
-
-        // Now the hex code for the specific character.
-        printf (" %02x", pc[i]);
-
-        // And store a printable ASCII character for later.
-        if ((pc[i] < 0x20) || (pc[i] > 0x7e))
-            buff[i % 16] = '.';
-        else
-            buff[i % 16] = pc[i];
-        buff[(i % 16) + 1] = '\0';
-    }
-
-    // Pad out last line if not exactly 16 characters.
-    while ((i % 16) != 0) {
-        printf ("   ");
-        i++;
-    }
-
-    // And print the final ASCII bit.
-    printf ("  %s\n", buff);
-}
-
-static void cb_on_rx_data(pj_ice_strans *ice_st,
-                          unsigned comp_id,
-                          void *pkt, pj_size_t size,
-                          const pj_sockaddr_t *src_addr,
-                          unsigned src_addr_len)
-{
-    char ipstr[PJ_INET6_ADDRSTRLEN+10];
-
-    PJ_UNUSED_ARG(ice_st);
-    PJ_UNUSED_ARG(src_addr_len);
-    PJ_UNUSED_ARG(pkt);
-
-    // Don't do this! It will ruin the packet buffer in case TCP is used!
-    //((char*)pkt)[size] = '\0';
-
-    PJ_LOG(3,(THIS_FILE, "Component %d: received %d bytes data from %s: \"%.*s\"",
-              comp_id, size,
-              pj_sockaddr_print(src_addr, ipstr, sizeof(ipstr), 3),
-              (unsigned)size,
-              (char*)pkt));
-
-    // TODO: how to know which session this RX belongs to
-    hexDump(NULL, pkt, size);
-
-
-}
-
-/*
- * This is the callback that is registered to the ICE stream transport to
- * receive notification about ICE state progression.
- */
-static void cb_on_ice_complete(pj_ice_strans *ice_st, 
-                               pj_ice_strans_op op,
-                               pj_status_t status)
-{
-    const char *opname =
-            (op==PJ_ICE_STRANS_OP_INIT? "initialization" :
-                                        (op==PJ_ICE_STRANS_OP_NEGOTIATION ? "negotiation" : "unknown_op"));
-
-    if (status == PJ_SUCCESS) {
-        PJ_LOG(3,(THIS_FILE, "ICE %s successful", opname));
-    } else {
-        char errmsg[PJ_ERR_MSG_SIZE];
-
-        pj_strerror(status, errmsg, sizeof(errmsg));
-        PJ_LOG(1,(THIS_FILE, "ICE %s failed: %s", opname, errmsg));
-        pj_ice_strans_destroy(ice_st);
-
-        // FIXME: update the ICE transaction
-        //icedemo.icest = NULL;
-    }
-}
-
 /* log callback to write to file */
 static void log_func(struct ice_trans_s* icetrans,  int level, const char *data, int len)
 {
@@ -416,8 +312,8 @@ void icedemo_create_instance(struct ice_trans_s* icetrans, ice_option_t opt)
 
     /* init the callback */
     pj_bzero(&icecb, sizeof(icecb));
-    icecb.on_rx_data = cb_on_rx_data;
-    icecb.on_ice_complete = cb_on_ice_complete;
+    icecb.on_rx_data = icetrans->cb_on_rx_data;
+    icecb.on_ice_complete = icetrans->cb_on_ice_complete;
 
     /* create the instance */
     // TODO: just wonder if the object name should be unique among ICE transation

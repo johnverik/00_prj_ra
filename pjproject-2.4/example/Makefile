@@ -1,5 +1,5 @@
 APP=iceController
-APP_CLIENT=iceclient
+APP_CLIENT=nat_lient
 APP2 = xml2test
 
 CFLAGS += -L../pjlib/lib 
@@ -38,13 +38,14 @@ all:
 	gcc -o $(APP2) -DBUILD_XMLWRAPPER xml2wrapper.c $(CFLAGS)  
 	
 
-#CLIENT_SRCS =   iceclient.c 
-#CLIENT_SRCS +=  httpwrapper.c 
-#CLIENT_SRCS +=  getline.c 
-#CLIENT_SRCS +=  xml2wrapper.c 
-#
-#client:
-#	gcc -o $(APP_CLIENT) $(CLIENT_SRCS)  $(CFLAGS)  
+CLIENT_SRCS =   icewrapper.c 
+CLIENT_SRCS +=   iceclient.c 
+CLIENT_SRCS +=  httpwrapper.c 
+CLIENT_SRCS +=  getline.c 
+CLIENT_SRCS +=  xml2wrapper.c 
+
+client:
+	gcc -o $(APP_CLIENT) $(CLIENT_SRCS)  $(CFLAGS)  
 
 clean:
 	rm -f $(APP)
