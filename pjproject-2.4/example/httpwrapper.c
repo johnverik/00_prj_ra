@@ -89,23 +89,32 @@ int http_get_request(char *url, char *buff)
 
     data.data[0] = '\0';
 
+    printf("[DEBUG] curl: %s \n", url);
+
     curl = curl_easy_init();
     if(curl) {
+        printf("[DEBUG] %s, %d \n", __FILE__, __LINE__);
         curl_easy_setopt(curl, CURLOPT_URL, url);
         /* example.com is redirected, so we tell libcurl to follow redirection */
         //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+        printf("[DEBUG] %s, %d \n", __FILE__, __LINE__);
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, &data);
 
+        printf("[DEBUG] %s, %d \n", __FILE__, __LINE__);
         /* Perform the request, res will get the return code */
         res = curl_easy_perform(curl);
+        printf("[DEBUG] %s, %d \n", __FILE__, __LINE__);
         /* Check for errors */
         if(res != CURLE_OK)
             fprintf(stderr, "curl_easy_perform() failed: %s\n",
                     curl_easy_strerror(res));
 
+        printf("[DEBUG] %s, %d \n", __FILE__, __LINE__);
+
         /* always cleanup */
         curl_easy_cleanup(curl);
+        printf("[DEBUG] %s, %d \n", __FILE__, __LINE__);
 
         //printf("[Received data: %s \n", data.data);
     }

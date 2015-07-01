@@ -5,115 +5,27 @@
 #include "icewrapper.h"
 #include "httpwrapper.h"
 #include "xml2wrapper.h"
-#include "utilities.h"
 
-
-#define MAX_ICE_TRANS  1
-
-struct nat_client_t
+struct app_t
 {
-
     ice_option_t opt;
-
     ice_trans_t ice_receive;
-
-    ice_trans_t ice_trans_list[MAX_ICE_TRANS];
-
 } ;
 
-//  Global variable
 
-struct nat_client_t natclient;
-
+struct app_t natclient;
 
 char gUrl[] = "http://115.77.49.188:5001";
 char usrid[256];
 char host_name[256];
 int portno;
-
-
-
-/*
- * This is the callback that is registered to the ICE stream transport to
- * receive notification about incoming data. By "data" it means application
- * data such as RTP/RTCP, and not packets that belong to ICE signaling (such
- * as STUN connectivity checks or TURN signaling).
- */
-
-static void cb_on_rx_data(pj_ice_strans *ice_st,
-                          unsigned comp_id,
-                          void *pkt, pj_size_t size,
-                          const pj_sockaddr_t *src_addr,
-                          unsigned src_addr_len)
-{
-    char ipstr[PJ_INET6_ADDRSTRLEN+10];
-
-    PJ_UNUSED_ARG(ice_st);
-    PJ_UNUSED_ARG(src_addr_len);
-    PJ_UNUSED_ARG(pkt);
-
-    // Don't do this! It will ruin the packet buffer in case TCP is used!
-    //((char*)pkt)[size] = '\0';
-
-    PJ_LOG(3,(THIS_FILE, "Component %d: received %d bytes data from %s: \"%.*s\"",
-              comp_id, size,
-              pj_sockaddr_print(src_addr, ipstr, sizeof(ipstr), 3),
-              (unsigned)size,
-              (char*)pkt));
-
-    // TODO: how to know which session this RX belongs to
-    hexDump(NULL, pkt, size);
-
-
-}
-
-/*
- * This is the callback that is registered to the ICE stream transport to
- * receive notification about ICE state progression.
- */
-static void cb_on_ice_complete(pj_ice_strans *ice_st,
-                               pj_ice_strans_op op,
-                               pj_status_t status)
-{
-    const char *opname =
-            (op==PJ_ICE_STRANS_OP_INIT? "initialization" :
-                                        (op==PJ_ICE_STRANS_OP_NEGOTIATION ? "negotiation" : "unknown_op"));
-
-    if (status == PJ_SUCCESS) {
-        PJ_LOG(3,(THIS_FILE, "ICE %s successful", opname));
-    } else {
-        char errmsg[PJ_ERR_MSG_SIZE];
-
-        pj_strerror(status, errmsg, sizeof(errmsg));
-        PJ_LOG(1,(THIS_FILE, "ICE %s failed: %s", opname, errmsg));
-        pj_ice_strans_destroy(ice_st);
-
-        // FIXME: update the ICE transaction
-        //natclient.icest = NULL;
-    }
-}
-
-
-
-
-
-static int get_ice_tran_from_name(char *name)
-{
-    int i;
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-        if (strcmp(name, natclient.ice_trans_list[i].name) == 0)
-            return i;
-    return i;
-}
+char sdp[1024];
 
 
 
 enum COMMAND_IDX {
-    CMD_HOME_GET = 0,
-    CMD_DEVICE_GET,
-    CMD_DEVICE_REGISTER,
-    CMD_PEER_CONNECT,
-    CMD_PEER_SEND,
+    CMD_CLIENT_CONNECT=0,
+    CMD_CLIENT_SEND,
     CMD_EXIT,
     CMD_MAX
 };
@@ -217,32 +129,10 @@ static int api_device_get(void* arg)
 
 static int api_peer_connect(void *arg)
 {
-
-    int index;
-
-    index = get_ice_tran_from_name(arg);
-
-    if (index < MAX_ICE_TRANS)
-    { // do no thing as the
-/*
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        // re-initialize
-        ice_trans_t *ice_trans = &natclient.ice_trans_list[index];
-        natclient_connect_with_user(ice_trans, arg);
-        natclient_start_nego(ice_trans);
-        */
-    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
-        // Get an empty ice
-
-        printf("DEBUG start initialization \n", __FILE__, __LINE__);
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        ice_trans_t *ice_trans = &natclient.ice_trans_list[index];
-        strcpy(ice_trans->name, arg);
-        natclient_connect_with_user(ice_trans, arg);
-        natclient_start_nego(ice_trans);
-    }else
-        return -1;
+    ice_trans_t *ice_trans = &natclient.ice_receive;
+    strcpy(ice_trans->name, arg);
+    natclient_connect_with_user(ice_trans, arg);
+    natclient_start_nego(ice_trans);
 
     return 0;
 }
@@ -257,31 +147,15 @@ static int api_peer_send(void *arg)
 {
     MSG_T *msg = (MSG_T *)arg;
 
-    int index = get_ice_tran_from_name(msg->username);
-
-    if (index < MAX_ICE_TRANS)
-    {
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        // TODO: Send to a particular user
-        natclient_send_data(&natclient.ice_trans_list[index], 1, msg->msg);
-    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        natclient_send_data(&natclient.ice_trans_list[index], 1, msg->msg);
-    }else
-        return -1;
+    natclient_send_data(&natclient.ice_receive, 1, msg->msg);
     return 0;
 }
 
 
 
 cmd_handler_t cmd_list[CMD_MAX] = {
-    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
-    {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
-    {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
-    {.cmd_idx = CMD_PEER_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
-    {.cmd_idx = CMD_PEER_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
+    {.cmd_idx = CMD_CLIENT_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
+    {.cmd_idx = CMD_CLIENT_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
 
@@ -294,6 +168,22 @@ void cmd_print_help()
 }
 
 
+
+int is_valid_int(const char *str)
+{
+    //
+    if (!*str)
+        return 0;
+    while (*str)
+    {
+        if (!isdigit(*str))
+            return 0;
+        else
+            ++str;
+    }
+
+    return 1;
+}
 
 
 
@@ -315,51 +205,31 @@ static void natclient_console(void)
     get_and_register_SDP_to_cloud(icetrans, natclient.opt, usrid);
     int i;
 
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-    {
-        icetrans = &natclient.ice_trans_list[i];
-        natclient_create_instance(icetrans, natclient.opt);
-        usleep(1*1000*1000);
-        natclient_init_session(icetrans, 'o');
-        strcpy(icetrans->name, "");
-    }
-
     char cmd[256];
     memset(cmd, 0, 256);
-    while (printf(">>>") && fgets(&cmd[0], 256, stdin) != NULL)
+    while (printf(">>>") && gets(&cmd[0]) != NULL)
     {
-        printf("cmd: %s \n", cmd);
-        //if (is_valid_int(cmd))
-        if ( cmd[0] >= '0' && cmd[0] <= '9')
+        //printf("cmd: %s \n", cmd);
+        if (is_valid_int(cmd))
         {
             int idx = atoi(cmd);
-            printf("[DEBUG] command index : %d \n", idx );
+            //printf("[DEBUG] command index : %d \n", idx );
             switch (idx)
             {
-            case CMD_HOME_GET:
-                cmd_list[idx].cmd_func("networkID1");
-                break;
-            case CMD_DEVICE_GET:
-                cmd_list[idx].cmd_func("device1");
-                break;
-            case CMD_DEVICE_REGISTER:
-                cmd_list[idx].cmd_func("registerDevice");
-                break;
-            case CMD_PEER_CONNECT:
+            case CMD_CLIENT_CONNECT:
                 printf("which user: ");
                 char user[256];
-		memset(user, 256, 0);
-                fgets(user, 256, stdin);
+                gets(user);
                 if (strlen(user) > 2)
                     api_peer_connect(user);
                 break;
-            case CMD_PEER_SEND:
+            case CMD_CLIENT_SEND:
             {
                 MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
                 printf("[USR]: ");
-                fgets(msg->username, 256, stdin);
+                gets(msg->username);
                 printf("[MSG]: ");
-                fgets(msg->msg, 256, stdin);
+                gets(msg->msg);
                 if (strlen(msg->msg) > 1)
                     cmd_list[idx].cmd_func(msg);
                 break;
@@ -421,6 +291,135 @@ static void natclient_usage()
 
 
 
+
+
+/*
+ * This is the callback that is registered to the ICE stream transport to
+ * receive notification about incoming data. By "data" it means application
+ * data such as RTP/RTCP, and not packets that belong to ICE signaling (such
+ * as STUN connectivity checks or TURN signaling).
+ */
+
+
+static void hexDump (char *desc, void *addr, int len) {
+    int i;
+    unsigned char buff[17];
+    unsigned char *pc = (unsigned char*)addr;
+
+    // Output description if given.
+    if (desc != NULL)
+        printf ("%s:\n", desc);
+
+    // Process every byte in the data.
+    for (i = 0; i < len; i++) {
+        // Multiple of 16 means new line (with line offset).
+
+        if ((i % 16) == 0) {
+            // Just don't print ASCII for the zeroth line.
+            if (i != 0)
+                printf ("  %s\n", buff);
+
+            // Output the offset.
+            printf ("MSGMSG  %04x ", i);
+        }
+
+        // Now the hex code for the specific character.
+        printf (" %02x", pc[i]);
+
+        // And store a printable ASCII character for later.
+        if ((pc[i] < 0x20) || (pc[i] > 0x7e))
+            buff[i % 16] = '.';
+        else
+            buff[i % 16] = pc[i];
+        buff[(i % 16) + 1] = '\0';
+    }
+
+    // Pad out last line if not exactly 16 characters.
+    while ((i % 16) != 0) {
+        printf ("   ");
+        i++;
+    }
+    printf ("  %s\n", buff);
+}
+
+
+static void cb_on_rx_data(pj_ice_strans *ice_st,
+                          unsigned comp_id,
+                          void *pkt, pj_size_t size,
+                          const pj_sockaddr_t *src_addr,
+                          unsigned src_addr_len)
+{
+    char ipstr[PJ_INET6_ADDRSTRLEN+10];
+
+    PJ_UNUSED_ARG(ice_st);
+    PJ_UNUSED_ARG(src_addr_len);
+    PJ_UNUSED_ARG(pkt);
+
+    ((char*)pkt)[size] = '\0';
+
+    // TODO: how to know which session this RX belongs to
+    hexDump(NULL, pkt, size);
+
+    const char s[2] = " ";
+    char *token;
+    token = strtok(pkt, s);
+
+    int index = 0;
+    char node_id[100];
+    int cmd_on_off; // 1: on, 0: off
+
+    while( token != NULL )
+    {
+        printf( " %s\n", token );
+        if (index == 1)
+            strcpy(node_id, token);
+        else if (index == 0)
+        {
+            if (strcmp(token, "turnon") == 0)
+                cmd_on_off = 1;
+            else if (strcmp(token, "turnoff") == 0)
+                cmd_on_off = 0;
+        }
+
+        token = strtok(NULL, s);
+    }
+
+    char ubus_cmd[256];
+    sprintf(ubus_cmd,  "ubus call zwave set_binary '{\"nodeid\": \"%s\", \"value\":\"%d\"}'", node_id,  cmd_on_off);
+
+    printf("Debug recive comand: %s \n", ubus_cmd);
+
+
+}
+
+/*
+ * This is the callback that is registered to the ICE stream transport to
+ * receive notification about ICE state progression.
+ */
+static void cb_on_ice_complete(pj_ice_strans *ice_st,
+                               pj_ice_strans_op op,
+                               pj_status_t status)
+{
+    const char *opname =
+            (op==PJ_ICE_STRANS_OP_INIT? "initialization" :
+                                        (op==PJ_ICE_STRANS_OP_NEGOTIATION ? "negotiation" : "unknown_op"));
+
+    if (status == PJ_SUCCESS) {
+        PJ_LOG(3,(THIS_FILE, "ICE %s successful", opname));
+    } else {
+        char errmsg[PJ_ERR_MSG_SIZE];
+
+        pj_strerror(status, errmsg, sizeof(errmsg));
+        PJ_LOG(1,(THIS_FILE, "ICE %s failed: %s", opname, errmsg));
+        pj_ice_strans_destroy(ice_st);
+
+        // FIXME: update the ICE transaction
+        //natclient.icest = NULL;
+    }
+}
+
+
+
 int main(int argc, char *argv[])
 {
     struct pj_getopt_option long_options[] = {
@@ -443,13 +442,10 @@ int main(int argc, char *argv[])
 
 };
     int c, opt_id;
-
-
-    // default initialization
-
     strcpy(usrid, "userid");
     strcpy(host_name, "116.100.11.109");
     portno = 12345;
+    memset(sdp, 0, 1024);
 
 
     pj_status_t status;
@@ -520,34 +516,16 @@ int main(int argc, char *argv[])
         }
     }
 
+    natclient.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
+    natclient.ice_receive.cb_on_rx_data = cb_on_rx_data;
     // initialization for receiving
     status = natclient_init(&natclient.ice_receive, natclient.opt);
     get_and_register_SDP_to_cloud(&natclient.ice_receive, natclient.opt, usrid);
-
-    natclient.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
-    natclient.ice_receive.cb_on_rx_data = cb_on_rx_data;
-
-
-    int i;
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-    {
-        natclient.ice_trans_list[i].cb_on_ice_complete = cb_on_ice_complete;
-        natclient.ice_trans_list[i].cb_on_rx_data = cb_on_rx_data;
-        natclient_init(&natclient.ice_trans_list[i], natclient.opt);
-    }
-
-
     if (status != PJ_SUCCESS)
         return 1;
 
     natclient_console();
 
     err_exit("Quitting..", PJ_SUCCESS, &natclient.ice_receive);
-    for (i = 0; i < MAX_ICE_TRANS; i++)
-        err_exit("Quitting..", PJ_SUCCESS, &natclient.ice_trans_list[i]);
-
-    // FIXME: exit all opened ice session
-
-
     return 0;
 }
