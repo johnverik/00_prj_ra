@@ -36,7 +36,7 @@ SRCS +=  getline.c
 SRCS +=  xml2wrapper.c 
 
 
-all:  client
+all:  
 	gcc -o $(APP) $(SRCS)  $(CFLAGS)  
 	gcc -o $(APP2) -DBUILD_XMLWRAPPER xml2wrapper.c $(CFLAGS)  
 	
