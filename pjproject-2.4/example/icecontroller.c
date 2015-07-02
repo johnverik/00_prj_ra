@@ -114,6 +114,7 @@ enum COMMAND_IDX {
     CMD_DEVICE_REGISTER,
     CMD_PEER_CONNECT,
     CMD_PEER_SEND,
+    CMD_LOG_SET,
     CMD_EXIT,
     CMD_MAX
 };
@@ -273,15 +274,34 @@ static int api_peer_send(void *arg)
         return -1;
     return 0;
 }
+static int api_log_set_log_level(void *arg)
+{
+    int _log_level;
+    char buff[16];
+
+    printf("Select log level [0-5]: ");
+    fgets_wrapper(buff, 16, stdin);
+    if (strlen(buff) == 1)
+        if (buff[0] >= '0' && buff[0] <= '9')
+        {
+            _log_level = atoi(buff);
+            _log_level = ((_log_level >= PJ_LOG_MAX_LEVEL) ? PJ_LOG_MAX_LEVEL: _log_level);
+            pj_log_set_level(_log_level);
+        }
+
+    return 0;
+
+}
 
 
 
 cmd_handler_t cmd_list[CMD_MAX] = {
-    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork", .cmd_func = api_home_get},
+    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork (", .cmd_func = api_home_get},
     {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
     {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
     {.cmd_idx = CMD_PEER_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
     {.cmd_idx = CMD_PEER_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
+    {.cmd_idx = CMD_LOG_SET, .help = "Set log level (Default 5. Log level is from 0 to 5", .cmd_func = api_log_set_log_level },
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
 
@@ -292,9 +312,6 @@ void cmd_print_help()
     for (i = 0; i < CMD_MAX; i++)
         printf("%d: \t %s \n", cmd_list[i].cmd_idx, cmd_list[i].help);
 }
-
-
-
 
 
 
@@ -326,14 +343,16 @@ static void natclient_console(void)
 
     char cmd[256];
     memset(cmd, 0, 256);
-    while (printf(">>>") && fgets(&cmd[0], 256, stdin) != NULL)
+    while (printf(">>>") && fgets_wrapper(&cmd[0], 256, stdin) != NULL)
     {
         printf("cmd: %s \n", cmd);
         //if (is_valid_int(cmd))
+        if (strlen(cmd) > 0)
+        {
         if ( cmd[0] >= '0' && cmd[0] <= '9')
         {
             int idx = atoi(cmd);
-            printf("[DEBUG] command index : %d \n", idx );
+            //printf("[DEBUG] command index : %d \n", idx );
             switch (idx)
             {
             case CMD_HOME_GET:
@@ -348,8 +367,8 @@ static void natclient_console(void)
             case CMD_PEER_CONNECT:
                 printf("which user: ");
                 char user[256];
-		memset(user, 256, 0);
-                fgets(user, 256, stdin);
+                memset(user, 256, 0);
+                fgets_wrapper(user, 256, stdin);
                 if (strlen(user) > 2)
                     api_peer_connect(user);
                 break;
@@ -357,12 +376,18 @@ static void natclient_console(void)
             {
                 MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
                 printf("[USR]: ");
-                fgets(msg->username, 256, stdin);
+                fgets_wrapper(msg->username, 256, stdin);
                 printf("[MSG]: ");
-                fgets(msg->msg, 256, stdin);
+                fgets_wrapper(msg->msg, 256, stdin);
                 if (strlen(msg->msg) > 1)
                     cmd_list[idx].cmd_func(msg);
                 break;
+            }
+            case CMD_LOG_SET:
+            {
+                cmd_list[idx].cmd_func(NULL);
+                break;
+
             }
             case CMD_EXIT:
                 printf("BYE BYE :-*, :-*\n");
@@ -371,6 +396,8 @@ static void natclient_console(void)
                 cmd_print_help();
                 break;
             }
+        }else
+            cmd_print_help();
         }else
             cmd_print_help();
 

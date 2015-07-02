@@ -3,5 +3,7 @@
 
 void hexDump (char *desc, void *addr, int len);
 int is_valid_int(const char *str);
+char *fgets_wrapper(char *s, int size, FILE *stream);
+
 
 #endif 

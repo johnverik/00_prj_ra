@@ -722,6 +722,9 @@ void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_i
 
                 printf("[Debug] URL: %s \n", full_url);
 
+//                strcpy(full_url, "http://115.77.49.188:5001/peer/getPeer/device1");
+
+
                 http_get_request(full_url, &buff[0]);
                 printf("DEBUG %s, %d \n", __FILE__, __LINE__);
 
@@ -735,7 +738,7 @@ void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_i
                 xmlNode *a_node = xml_get_node_by_name(buff, "registerPeer");
                 assert(a_node != NULL);
 
-                printf("DEBUG %s, %d \n", __FILE__, __LINE__);
+                //printf("DEBUG %s, %d \n", __FILE__, __LINE__);
 
                 value = (char *)xml_xmlnode_get_content_by_name(a_node->children, "ufrag");
                 strcpy(icetrans->rem.ufrag, value);
@@ -752,7 +755,7 @@ void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_i
                 //printf("DEBUG %s, %d \n", __FILE__, __LINE__);
 
                 for (cur_node = a_node->children; cur_node; cur_node = cur_node->next) {
-                    printf("[DEBUG] %s \n", cur_node->name);
+                   // printf("[DEBUG] %s \n", cur_node->name);
 
                     if (cur_node->type == XML_ELEMENT_NODE)
                     {
