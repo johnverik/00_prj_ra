@@ -8,7 +8,7 @@
 #include "utilities.h"
 
 
-#define MAX_ICE_TRANS  1
+#define MAX_ICE_TRANS  2
 
 struct nat_client_t
 {
@@ -53,16 +53,21 @@ static void cb_on_rx_data(pj_ice_strans *ice_st,
     PJ_UNUSED_ARG(pkt);
 
     // Don't do this! It will ruin the packet buffer in case TCP is used!
-    //((char*)pkt)[size] = '\0';
+    ((char*)pkt)[size] = '\0';
 
-    PJ_LOG(3,(THIS_FILE, "Component %d: received %d bytes data from %s: \"%.*s\"",
+    PJ_LOG(4,(THIS_FILE, "Component %d: received %d bytes data from %s: \"%.*s\"",
               comp_id, size,
               pj_sockaddr_print(src_addr, ipstr, sizeof(ipstr), 3),
               (unsigned)size,
               (char*)pkt));
 
+    PJ_LOG(3,("", "[Received Message]: \"%.*s\"",
+              (unsigned)size,
+              (char*)pkt));
+
+
     // TODO: how to know which session this RX belongs to
-    hexDump(NULL, pkt, size);
+    //hexDump(NULL, pkt, size);
 
 
 }
@@ -106,15 +111,18 @@ static int get_ice_tran_from_name(char *name)
     return i;
 }
 
-
+#define DEMO1 1
 
 enum COMMAND_IDX {
+#ifndef DEMO1
     CMD_HOME_GET = 0,
     CMD_DEVICE_GET,
     CMD_DEVICE_REGISTER,
-    CMD_PEER_CONNECT,
-    CMD_PEER_SEND,
+#endif
+    CMD_CLIENT_CONNECT = 0,
+    CMD_CLIENT_SEND,
     CMD_LOG_SET,
+    CMD_DEVICE_ADD,
     CMD_EXIT,
     CMD_MAX
 };
@@ -193,6 +201,8 @@ static int api_home_get(void* arg)
     return 0;
 }
 
+
+//DEPRECATED
 static int api_device_get(void* arg)
 {
     char full_url[256];
@@ -207,9 +217,6 @@ static int api_device_get(void* arg)
     //printf("DEBUG recieved buffer: \n %s \n", buff);
     // TODO: fine-tuning the result by using libxml
     char *value = xml_get_content_by_name(buff, "uniqueId");
-    printf("Device information: \n");
-    printf("\t Device ID: %s \n", value);
-    printf("=============================\n");
     free(value);
     free(buff);
     return 0;
@@ -218,65 +225,77 @@ static int api_device_get(void* arg)
 
 static int api_peer_connect(void *arg)
 {
-
     int index;
-
     index = get_ice_tran_from_name(arg);
-
     if (index < MAX_ICE_TRANS)
-    { // do no thing as the
-/*
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        // re-initialize
-        ice_trans_t *ice_trans = &natclient.ice_trans_list[index];
-        natclient_connect_with_user(ice_trans, arg);
-        natclient_start_nego(ice_trans);
-        */
+    {
+        PJ_LOG(3,(THIS_FILE, "The user %s has been connected ..... \n", arg));
+
     }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
         // Get an empty ice
-
-        printf("DEBUG start initialization \n", __FILE__, __LINE__);
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
         ice_trans_t *ice_trans = &natclient.ice_trans_list[index];
         strcpy(ice_trans->name, arg);
         natclient_connect_with_user(ice_trans, arg);
         natclient_start_nego(ice_trans);
     }else
+    {
+        PJ_LOG(3,(THIS_FILE, "The maximun number of the connected client has been reached ..... \n"));
         return -1;
-
+    }
     return 0;
 }
 
 
 typedef struct _MSG_S{
     char username[256];
-    char msg[256];
+    char msg[1024];
 }MSG_T;
 
 static int api_peer_send(void *arg)
 {
+
     MSG_T *msg = (MSG_T *)arg;
 
-    int index = get_ice_tran_from_name(msg->username);
+    PJ_LOG(3,(THIS_FILE, "Send message %s to user %s ..... \n", msg->username, msg->msg));
 
+    int index = get_ice_tran_from_name(msg->username);
     if (index < MAX_ICE_TRANS)
     {
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        // TODO: Send to a particular user
         natclient_send_data(&natclient.ice_trans_list[index], 1, msg->msg);
-    }else if ((index = get_ice_tran_from_name("")) < MAX_ICE_TRANS){
-
-        printf("[DEBUG] %s index: %d \n", __FUNCTION__, index);
-        natclient_send_data(&natclient.ice_trans_list[index], 1, msg->msg);
-    }else
+    }else{
+        PJ_LOG(3,(THIS_FILE, "The user %s has not been connected ..... \n", msg->username));
         return -1;
+    }
+
     return 0;
 }
+
+
+//
+//cmd format: device_id
+static int api_peer_add_device(void *arg)
+{
+    char xml_msg[1024];
+
+    sprintf(xml_msg, "<NAT> <deviceID> %s </deviceID>  <command> turnon </command> <nodeID> _node_id_ </nodeID>  </NAT> ", usrid);
+
+     MSG_T *_msg = (MSG_T *)malloc(sizeof(MSG_T));
+     if (_msg == NULL)
+     {
+         PJ_LOG(1,(THIS_FILE, "%s can not allocate memeory", __FUNCTION__));
+         return -1;
+     }
+     strcpy(_msg->username, arg);
+     strcpy(_msg->msg, xml_msg);
+     api_peer_send((char *)_msg);
+     free(_msg);
+     return 0;
+}
+
+
 static int api_log_set_log_level(void *arg)
 {
-    int _log_level;
+    int _log_level = 2;
     char buff[16];
 
     printf("Select log level [0-5]: ");
@@ -287,6 +306,8 @@ static int api_log_set_log_level(void *arg)
             _log_level = atoi(buff);
             _log_level = ((_log_level >= PJ_LOG_MAX_LEVEL) ? PJ_LOG_MAX_LEVEL: _log_level);
             pj_log_set_level(_log_level);
+            PJ_LOG(3,(THIS_FILE, "the log level has been set to %d ..... \n", _log_level));
+
         }
 
     return 0;
@@ -296,12 +317,16 @@ static int api_log_set_log_level(void *arg)
 
 
 cmd_handler_t cmd_list[CMD_MAX] = {
-    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork (", .cmd_func = api_home_get},
+
+#ifndef DEMO1
+    {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork ", .cmd_func = api_home_get},
     {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
     {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
-    {.cmd_idx = CMD_PEER_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
-    {.cmd_idx = CMD_PEER_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
+#endif
+    {.cmd_idx = CMD_CLIENT_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
+    {.cmd_idx = CMD_CLIENT_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
     {.cmd_idx = CMD_LOG_SET, .help = "Set log level (Default 5. Log level is from 0 to 5", .cmd_func = api_log_set_log_level },
+    {.cmd_idx = CMD_DEVICE_ADD, .help = "Add a zwave device ( experimetal )", .cmd_func = api_peer_add_device },
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
 
@@ -319,9 +344,7 @@ static void natclient_console(void)
 {
     pj_bool_t app_quit = PJ_FALSE;
 
-    printf("[Debug] %s, %d \n", __FILE__, __LINE__);
-
-    struct ice_trans_s* icetrans = &natclient.ice_receive;
+    ice_trans_t* icetrans = &natclient.ice_receive;
 
     strcpy(icetrans->name, usrid);
     natclient_create_instance(icetrans,  natclient.opt);
@@ -336,7 +359,7 @@ static void natclient_console(void)
     {
         icetrans = &natclient.ice_trans_list[i];
         natclient_create_instance(icetrans, natclient.opt);
-        usleep(1*1000*1000);
+        usleep(2*1000*1000);
         natclient_init_session(icetrans, 'o');
         strcpy(icetrans->name, "");
     }
@@ -345,7 +368,7 @@ static void natclient_console(void)
     memset(cmd, 0, 256);
     while (printf(">>>") && fgets_wrapper(&cmd[0], 256, stdin) != NULL)
     {
-        printf("cmd: %s \n", cmd);
+        PJ_LOG(4,(THIS_FILE, "cmd Index %s \n", cmd));
         //if (is_valid_int(cmd))
         if (strlen(cmd) > 0)
         {
@@ -355,6 +378,7 @@ static void natclient_console(void)
             //printf("[DEBUG] command index : %d \n", idx );
             switch (idx)
             {
+#ifndef DEMO1
             case CMD_HOME_GET:
                 cmd_list[idx].cmd_func("networkID1");
                 break;
@@ -364,28 +388,62 @@ static void natclient_console(void)
             case CMD_DEVICE_REGISTER:
                 cmd_list[idx].cmd_func("registerDevice");
                 break;
-            case CMD_PEER_CONNECT:
-                printf("which user: ");
+#endif
+            case CMD_CLIENT_CONNECT:
+                printf("[USR]: ");
                 char user[256];
                 memset(user, 256, 0);
                 fgets_wrapper(user, 256, stdin);
                 if (strlen(user) > 2)
                     api_peer_connect(user);
                 break;
-            case CMD_PEER_SEND:
+            case CMD_CLIENT_SEND:
             {
                 MSG_T *msg = (MSG_T *)calloc(sizeof(MSG_T), 1);
-                printf("[USR]: ");
-                fgets_wrapper(msg->username, 256, stdin);
-                printf("[MSG]: ");
-                fgets_wrapper(msg->msg, 256, stdin);
-                if (strlen(msg->msg) > 1)
+                if (msg == NULL)
+                {
+                    PJ_LOG(1 ,(THIS_FILE, "Can not allocated the memory  "));
+                    break;
+                }
+                printf("[MSG] (i.e. user_id|msg) : ");
+                char str_msg[1024];
+                fgets_wrapper(str_msg, 1024, stdin);
+
+                // split user_id and msg
+                const char s[2] = "|";
+                char *token;
+                token = strtok(str_msg, s);
+                int index = 0;
+                while( token != NULL )
+                {
+                    if (index == 0 && strlen(token) > 2)
+                        strcpy(msg->username, token);
+                    else if (index == 1 && strlen(token) > 2)
+                    {
+                        strcpy(msg->msg, token);
+                    }
+                    token = strtok(NULL, s);
+                    index++;
+                }
+
+                if (strlen(msg->msg) > 1 && strlen(msg->username) > 2)
                     cmd_list[idx].cmd_func(msg);
+
+                free(msg);
                 break;
             }
             case CMD_LOG_SET:
             {
                 cmd_list[idx].cmd_func(NULL);
+                break;
+
+            }
+            case CMD_DEVICE_ADD:
+            {
+                char username[256];
+                printf("[USR]: ");
+                fgets_wrapper(username, 256, stdin);
+                cmd_list[idx].cmd_func(username);
                 break;
 
             }
@@ -503,7 +561,7 @@ int main(int argc, char *argv[])
             natclient_usage();
             return 0;
         case 's':
-            printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
+            //printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
             natclient.opt.stun_srv = pj_str(pj_optarg);
             break;
         case 't':
@@ -528,15 +586,15 @@ int main(int argc, char *argv[])
             natclient.opt.log_file = pj_optarg;
             break;
         case 'U':
-            printf("[Debug] %s, %d \n", __FILE__, __LINE__);
+            ///printf("[Debug] %s, %d \n", __FILE__, __LINE__);
             strcpy(usrid, pj_optarg);
             break;
         case 'S':
-            printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
+            //printf("[Debug] %s, %d, option's value: %s \n", __FILE__, __LINE__, pj_optarg);
             strcpy(host_name, pj_optarg);
             break;
         case 'P':
-            printf("[Debug] %s, %d \n", __FILE__, __LINE__);
+            //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
             portno = atoi(pj_optarg);
             break;
 
@@ -548,13 +606,15 @@ int main(int argc, char *argv[])
     }
 
     // initialization for receiving
-    status = natclient_init(&natclient.ice_receive, natclient.opt);
-    get_and_register_SDP_to_cloud(&natclient.ice_receive, natclient.opt, usrid);
-
     natclient.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
     natclient.ice_receive.cb_on_rx_data = cb_on_rx_data;
 
+    status = natclient_init(&natclient.ice_receive, natclient.opt);
+    if (status != PJ_SUCCESS)
+        return 1;
 
+
+    // initialize the client
     int i;
     for (i = 0; i < MAX_ICE_TRANS; i++)
     {
@@ -563,9 +623,8 @@ int main(int argc, char *argv[])
         natclient_init(&natclient.ice_trans_list[i], natclient.opt);
     }
 
-
-    if (status != PJ_SUCCESS)
-        return 1;
+    // Default log leve: just visible the error log
+    pj_log_set_level(4);
 
     natclient_console();
 

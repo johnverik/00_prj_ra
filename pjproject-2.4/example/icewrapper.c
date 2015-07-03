@@ -421,34 +421,6 @@ void natclient_stop_session(struct ice_trans_s* icetrans)
     p += printed
 
 
-/* Utility to create a=candidate SDP attribute */
-static int print_cand(char buffer[], unsigned maxlen,
-                      const pj_ice_sess_cand *cand)
-{
-    char ipaddr[PJ_INET6_ADDRSTRLEN];
-    char *p = buffer;
-    int printed;
-
-    PRINT("a=candidate:%.*s %u UDP %u %s %u typ ",
-          (int)cand->foundation.slen,
-          cand->foundation.ptr,
-          (unsigned)cand->comp_id,
-          cand->prio,
-          pj_sockaddr_print(&cand->addr, ipaddr,
-                            sizeof(ipaddr), 0),
-          (unsigned)pj_sockaddr_get_port(&cand->addr));
-
-    PRINT("%s\n",
-          pj_ice_get_cand_type_name(cand->type));
-
-    if (p == buffer+maxlen)
-        return -PJ_ETOOSMALL;
-
-    *p = '\0';
-
-    return (int)(p-buffer);
-}
-
 static int print_cand_to_xml(char buffer[], unsigned maxlen,
                       const pj_ice_sess_cand *cand)
 {
@@ -613,15 +585,16 @@ void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans, ice_option_t op
     static char buffer[2048];
     int len;
 
+
     if (icetrans->icest == NULL) {
         PJ_LOG(1,(THIS_FILE, "Error: No ICE instance, create it first"));
         return;
     }
 
-    puts("General info");
-    puts("---------------");
-    printf("Component count    : %d\n", opt.comp_cnt);
-    printf("Status             : ");
+    PJ_LOG(4, (__FUNCTION__, "General info"));
+    PJ_LOG(4, (__FUNCTION__,"---------------"));
+    PJ_LOG(4, (__FUNCTION__,"Component count    : %d\n", opt.comp_cnt));
+    PJ_LOG(4, (__FUNCTION__,"Status             : "));
     if (pj_ice_strans_sess_is_complete(icetrans->icest))
         puts("negotiation complete");
     else if (pj_ice_strans_sess_is_running(icetrans->icest))
@@ -642,6 +615,7 @@ void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans, ice_option_t op
            pj_ice_strans_get_role(icetrans->icest)==PJ_ICE_SESS_ROLE_CONTROLLED ?
                "controlled" : "controlling");
 
+
     len = extract_sdp_to_xml(icetrans, buffer, 2048, opt, usrid);
     if (len < 0)
         err_exit("not enough buffer to show ICE status", -len, icetrans);
@@ -657,39 +631,10 @@ void get_and_register_SDP_to_cloud(struct ice_trans_s* icetrans, ice_option_t op
 
 
 
-    printf("Local SDP (paste this to remote host):\n"
+    PJ_LOG(4, (__FUNCTION__,"Local SDP (paste this to remote host):\n"
            "--------------------------------------\n"
-           "%s\n", buffer);
+           "%s\n", buffer));
 }
-
-
-void get_and_register_remote_SDP(struct ice_trans_s* icetrans)
-{
-    static char buffer[1000];
-    int len;
-
-    puts("");
-    puts("Remote info:\n"
-         "----------------------");
-    if (icetrans->rem.cand_cnt==0) {
-        puts("No remote info yet");
-    } else {
-        unsigned i;
-
-        printf("Remote ufrag       : %s\n", icetrans->rem.ufrag);
-        printf("Remote password    : %s\n", icetrans->rem.pwd);
-        printf("Remote cand. cnt.  : %d\n", icetrans->rem.cand_cnt);
-
-        for (i=0; i<icetrans->rem.cand_cnt; ++i) {
-            len = print_cand(buffer, sizeof(buffer), &icetrans->rem.cand[i]);
-            if (len < 0)
-                err_exit("not enough buffer to show ICE status", -len, icetrans);
-
-            printf("  %s", buffer);
-        }
-    }
-}
-
 
 
 void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_id)
@@ -699,8 +644,6 @@ void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_i
     unsigned comp0_port = 0;
     char     comp0_addr[80];
     pj_bool_t done = PJ_FALSE;
-
-    puts("Paste SDP from remote host, end with empty line");
 
     reset_rem_info(icetrans);
 
@@ -720,17 +663,12 @@ void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_i
                 strcpy(full_url, gUrl); // plus URL
                 sprintf(&full_url[strlen(full_url)], "/peer/getPeer/%s", usr_id); // plus API
 
-                printf("[Debug] URL: %s \n", full_url);
-
-//                strcpy(full_url, "http://115.77.49.188:5001/peer/getPeer/device1");
-
+                PJ_LOG(4, ("[Debug] URL: %s \n", full_url));
 
                 http_get_request(full_url, &buff[0]);
-                printf("DEBUG %s, %d \n", __FILE__, __LINE__);
 
                 char *value;
 
-                printf("DEBUG %s, %d buff: %s \n", __FILE__, __LINE__, buff);
 
                 xmlNode *cur_node = NULL;
 
@@ -807,14 +745,14 @@ void natclient_connect_with_user(struct ice_trans_s* icetrans, const char *usr_i
                         strcpy(type, value);
                         free(value);
 
-                        printf("DEBUG %s %d %s %d %s %d typ %s",
+                        PJ_LOG(4,(__FUNCTION__, "DEBUG %s %d %s %d %s %d typ %s",
                                foundation,
                                comp_id,
                                transport,
                                prio,
                                ipaddr,
                                port,
-                               type);
+                               type));
 
 
                         cand = &icetrans->rem.cand[icetrans->rem.cand_cnt];

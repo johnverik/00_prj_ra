@@ -91,7 +91,7 @@ int http_get_request(char *url, char *buff)
 
     data.data[0] = '\0';
 
-    hexDump(NULL, url, strlen(url));
+    //hexDump(NULL, url, strlen(url));
 
     //printf("[DEBUG] curl: %s \n", url);
 
