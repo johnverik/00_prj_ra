@@ -1,7 +1,7 @@
 .PHONY: client 
 
 APP=iceController
-APP_CLIENT=nat_lient
+APP_CLIENT=nat_client
 APP2 = xml2test
 
 CFLAGS += -L../pjlib/lib 

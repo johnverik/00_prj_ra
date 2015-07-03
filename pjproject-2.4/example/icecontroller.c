@@ -256,7 +256,7 @@ static int api_peer_send(void *arg)
 
     MSG_T *msg = (MSG_T *)arg;
 
-    PJ_LOG(3,(THIS_FILE, "Send message %s to user %s ..... \n", msg->username, msg->msg));
+    PJ_LOG(3,(THIS_FILE, "Send message %s to user %s ..... \n", msg->msg, msg->username));
 
     int index = get_ice_tran_from_name(msg->username);
     if (index < MAX_ICE_TRANS)
@@ -277,7 +277,7 @@ static int api_peer_add_device(void *arg)
 {
     char xml_msg[1024];
 
-    sprintf(xml_msg, "<NAT> <deviceID> %s </deviceID>  <command> turnon </command> <nodeID> _node_id_ </nodeID>  </NAT> ", usrid);
+    sprintf(xml_msg, "<NAT><deviceID>%s</deviceID><command>add_device</command></NAT>", usrid);
 
      MSG_T *_msg = (MSG_T *)malloc(sizeof(MSG_T));
      if (_msg == NULL)
