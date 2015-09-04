@@ -8,7 +8,7 @@
 #include "utilities.h"
 
 
-#define MAX_ICE_TRANS  2
+#define MAX_ICE_TRANS  3
 
 struct nat_client_t
 {
@@ -26,7 +26,7 @@ struct nat_client_t
 struct nat_client_t natclient;
 
 
-char gUrl[] = "http://115.77.49.188:5001";
+char gUrl[] = "http://116.100.51.18:5001";
 char usrid[256];
 char host_name[256];
 int portno;
@@ -120,9 +120,12 @@ enum COMMAND_IDX {
     CMD_DEVICE_REGISTER,
 #endif
     CMD_CLIENT_CONNECT = 0,
-    CMD_CLIENT_SEND,
-    CMD_LOG_SET,
     CMD_DEVICE_ADD,
+    CMD_CLIENT_SEND,
+    CMD_CLIENT_TURNON,
+    CMD_CLIENT_TURNOFF,
+    CMD_LOG_SET,
+
     CMD_EXIT,
     CMD_MAX
 };
@@ -293,6 +296,91 @@ static int api_peer_add_device(void *arg)
 }
 
 
+//arg: device_id|nodeID
+static int api_peer_turnon_device(void *arg)
+{
+    char xml_msg[1024];
+    char node_id[256];
+    memset(node_id, 0, 256);
+
+    MSG_T *_msg = (MSG_T *)malloc(sizeof(MSG_T));
+    if (_msg == NULL)
+    {
+        PJ_LOG(1,(THIS_FILE, "%s can not allocate memeory", __FUNCTION__));
+        return -1;
+    }
+
+    // split user_id and msg
+    const char s[2] = "|";
+    char *token;
+    token = strtok(arg, s);
+    int index = 0;
+
+    while( token != NULL )
+    {
+        if (index == 0 && strlen(token) > 2)
+            strcpy(_msg->username, token);
+        else if (index == 1 && strlen(token) >= 1)
+        {
+            strcpy(node_id, token);
+        }
+        token = strtok(NULL, s);
+        index++;
+    }
+
+    sprintf(xml_msg, "<NAT><deviceID>%s</deviceID><command>turnon</command><nodeID>%s</nodeID></NAT>", usrid, node_id);
+
+     strcpy(_msg->msg, xml_msg);
+     api_peer_send((char *)_msg);
+     free(_msg);
+     return 0;
+}
+
+
+//arg: device_id|nodeID
+static int api_peer_turnoff_device(void *arg)
+{
+    char xml_msg[1024];
+    char node_id[256];
+    memset(node_id, 0, 256);
+
+    MSG_T *_msg = (MSG_T *)malloc(sizeof(MSG_T));
+    if (_msg == NULL)
+    {
+        PJ_LOG(1,(THIS_FILE, "%s can not allocate memeory", __FUNCTION__));
+        return -1;
+    }
+
+    // split user_id and msg
+    const char s[2] = "|";
+    char *token;
+    token = strtok(arg, s);
+    int index = 0;
+
+    while( token != NULL )
+    {
+        if (index == 0 && strlen(token) > 2)
+            strcpy(_msg->username, token);
+        else if (index == 1 && strlen(token) >= 1)
+        {
+            strcpy(node_id, token);
+        }
+        token = strtok(NULL, s);
+        index++;
+    }
+
+    sprintf(xml_msg, "<NAT><deviceID>%s</deviceID><command>turnoff</command><nodeID>%s</nodeID></NAT>", usrid, node_id);
+
+     strcpy(_msg->msg, xml_msg);
+     api_peer_send((char *)_msg);
+     free(_msg);
+     return 0;
+}
+
+
+
+
+
 static int api_log_set_log_level(void *arg)
 {
     int _log_level = 2;
@@ -317,16 +405,17 @@ static int api_log_set_log_level(void *arg)
 
 
 cmd_handler_t cmd_list[CMD_MAX] = {
-
 #ifndef DEMO1
     {.cmd_idx = CMD_HOME_GET, .help = "Get all devices in a homenetwork ", .cmd_func = api_home_get},
     {.cmd_idx = CMD_DEVICE_GET, .help = "Get full information of a registered device", .cmd_func = api_device_get },
     {.cmd_idx = CMD_DEVICE_REGISTER, .help = "Register a device to cloud", .cmd_func = api_device_register },
 #endif
     {.cmd_idx = CMD_CLIENT_CONNECT, .help = "Create a ICE connectionto peer", .cmd_func = api_peer_connect },
-    {.cmd_idx = CMD_CLIENT_SEND, .help = "Send a message to peer", .cmd_func = api_peer_send },
+    {.cmd_idx = CMD_DEVICE_ADD, .help = "Add a zwave device (i.e device_id)  [experimetal]", .cmd_func = api_peer_add_device },
+    {.cmd_idx = CMD_CLIENT_SEND, .help = "Send a message to peer (i.e. device|content", .cmd_func = api_peer_send },
+    {.cmd_idx = CMD_CLIENT_TURNON, .help = "Turn on a ligth bulb (i.e. device|nodeID)", .cmd_func =  api_peer_turnon_device },
+    {.cmd_idx = CMD_CLIENT_TURNOFF, .help = "Turn off a ligth bulb (i.e. device|nodeID)", .cmd_func = api_peer_turnoff_device },
     {.cmd_idx = CMD_LOG_SET, .help = "Set log level (Default 5. Log level is from 0 to 5", .cmd_func = api_log_set_log_level },
-    {.cmd_idx = CMD_DEVICE_ADD, .help = "Add a zwave device ( experimetal )", .cmd_func = api_peer_add_device },
     {.cmd_idx = CMD_EXIT, .help = "Exit program", .cmd_func = NULL}
 };
 
@@ -432,6 +521,25 @@ static void natclient_console(void)
                 free(msg);
                 break;
             }
+            case CMD_CLIENT_TURNON:
+            {
+                printf("[MSG] (i.e. user_id|node_id) : ");
+                char str_msg[1024];
+                fgets_wrapper(str_msg, 1024, stdin);
+                cmd_list[idx].cmd_func(str_msg);
+                break;
+
+            }
+
+            case CMD_CLIENT_TURNOFF:
+            {
+                printf("[MSG] (i.e. user_id|node_id) : ");
+                char str_msg[1024];
+                fgets_wrapper(str_msg, 1024, stdin);
+                cmd_list[idx].cmd_func(str_msg);
+                break;
+
+            }
             case CMD_LOG_SET:
             {
                 cmd_list[idx].cmd_func(NULL);
@@ -481,6 +589,7 @@ static void natclient_usage()
     puts(" --max-host, -H N          Set max number of host candidates to N");
     puts(" --regular, -R             Use regular nomination (default aggressive)");
     puts(" --log-file, -L FILE       Save output to log FILE");
+    puts(" --log-level, -l level       Save output to log FILE");
     puts(" --help, -h                Display this screen.");
     puts("");
     puts("STUN related options:");
@@ -521,6 +630,7 @@ int main(int argc, char *argv[])
     { "turn-fingerprint",	0, 0, 'F'},
     { "regular",		0, 0, 'R'},
     { "log-file",		1, 0, 'L'},
+    { "log-level",		1, 0, 'l'},
     { "userid",   1, 0, 'U'},
     { "singalling",   1, 0, 'S'},
     { "singalling-port",   1, 0, 'P'},
@@ -528,6 +638,11 @@ int main(int argc, char *argv[])
 
 };
     int c, opt_id;
+
+    // Default log leve: just visible the error log
+    int log_level = 5;
+    pj_log_set_level(log_level);
+
 
 
     // default initialization
@@ -598,12 +713,19 @@ int main(int argc, char *argv[])
             portno = atoi(pj_optarg);
             break;
 
+        case 'l':
+            //printf("[Debug] %s, %d \n", __FILE__, __LINE__);
+            log_level = atoi(pj_optarg);
+            break;
+
         default:
             printf("Argument \"%s\" is not valid. Use -h to see help",
                    argv[pj_optind]);
             return 1;
         }
     }
+
+    pj_log_set_level(log_level);
 
     // initialization for receiving
     natclient.ice_receive.cb_on_ice_complete = cb_on_ice_complete;
@@ -623,8 +745,6 @@ int main(int argc, char *argv[])
         natclient_init(&natclient.ice_trans_list[i], natclient.opt);
     }
 
-    // Default log leve: just visible the error log
-    pj_log_set_level(4);
 
     natclient_console();
 

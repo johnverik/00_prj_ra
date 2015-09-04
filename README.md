@@ -1,5 +1,8 @@
 # 00_prj_ra
 
+[Obsolete] 
+new maintanance repository: https://github.com/avble/natClientEx
+
 1. Introduction 
 
 2. Build
